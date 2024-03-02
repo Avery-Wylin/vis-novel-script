@@ -1,0 +1,86 @@
+# begin
+
+var a { 1 2 3 }
+var b { 3 4 5 }
+var c { 0 }
+
+add &a &b &c
+print add &c
+
+sub &a &b &c
+print sub &c
+
+mul &a &b &c
+print mul &c
+
+div &a &b &c
+print div &c
+
+mod &a &b &c
+print mod &c
+
+pow &a &b &c
+print pow &c
+
+abs &a &b &c
+print abs &c
+
+min &a &b &c
+print min &c
+
+max &a &b &c
+print max &c
+
+greater &a &b &c
+print greater &c
+
+lesser &a &b &c
+print lesser &c
+
+invert &a &b &c
+print invert &c
+
+ceil &a &c
+print ceil &c
+
+floor &a &c
+print floor &c
+
+interval &a &b &c
+print interval &c
+
+clamp &a 0 1 &c
+print clamp &c
+
+combine &a &b &c
+print combine &c
+
+separate &a &b &c
+print separate &c
+
+fill &a &c
+print fill &c
+
+sum &a &c
+print sum &c
+
+cross &a &b &c
+print cross &c
+
+project &a &b &c
+print project &c
+
+distance &a &b &c
+print distance &c
+
+length &a &c
+print length &c
+
+normalize &a &b &c
+print normalize &c
+
+dot &a &b &c
+print dot &c
+
+lerp &a &b  .5 &c
+print lerp &c

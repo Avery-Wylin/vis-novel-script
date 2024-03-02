@@ -1,0 +1,17 @@
+# begin
+
+/ Test expressions
+var a 0.0
+var b false
+var c 7.0
+
+# again
+var b false
+var a 0.0
+
+expr a rand(0,1)
+expr b a>.5
+
+print a: &a b: &b
+wait
+jump again

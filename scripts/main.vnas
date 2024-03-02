@@ -1,0 +1,102 @@
+var a { 0 }
+var b { 0 }
+var c { 0 }
+var x 1
+var y 2
+var z 3
+var w 4
+
+jump begin test2
+
+jump end-routines
+
+# bar-pitch
+    var pitch 1.0
+    element value bar-pitch get &pitch
+    print &pitch
+    music pitch &pitch
+exit
+
+# end-routines
+
+menu create menu-main
+menu activate menu-main
+
+/  element create bar bar-pitch
+/  element size bar-pitch set .3 .1
+/  element routine bar-pitch bar-pitch main
+
+element create text name
+element size name set .2 .05
+
+element create text text
+element size text set .8 .2
+
+element create text-input input
+element size input set .8 .05
+element enable input false
+
+menu compact center 0 .5 .1 .4 .02 .02
+
+/ this is gross...
+var x .0
+var y .0
+element position name get &x &y
+sub &x .2 &x
+element position name set &x &y
+
+/  music play patient-tinge
+
+var emptystr _
+str clear &emptystr
+var playername &emptystr
+var choice &emptystr
+
+# again
+say start Jovian
+Whats your favorite fruit?
+
+element text input set &emptystr
+element enable input true
+wait
+element enable input false
+element value input get &choice
+
+if &choice b
+# bb_or_bn
+say start Jovian
+blueberry or banana?
+
+element text input set &emptystr
+element enable input true
+wait
+element enable input false
+element value input get &choice
+
+if &choice a
+say start Jovian
+banana
+
+elseif &choice b
+say start Jovian
+blueberry
+
+else
+    jump bb_or_bn
+end
+
+elseif &choice s
+say start Jovian
+strawberry
+
+elseif &choice k
+say start Jovian
+kiwi
+
+else
+say start Jovian
+orange
+
+end
+
+jump again

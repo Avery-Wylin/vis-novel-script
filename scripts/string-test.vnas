@@ -1,0 +1,43 @@
+# begin
+
+var a " The quick brown fox "
+var b " jumped over the lazy dog "
+var d " cat mat frog sat smog fat rat dog fog "
+var e " WeirdPassword123 "
+var c " ? "
+
+var begin 0
+var end 0
+
+str concat &a &b &c
+print concat &c
+
+str clear &c
+print clear &c
+
+str length &a &begin
+print length &begin
+
+str find &a " fox " &begin &end
+print find &begin &end
+
+str erase &a &begin &end &c
+print erase &c
+
+str trim &a &begin &end &c
+print trim &c
+
+str extract &d .at &c
+print extract &c
+
+str matches &e [a-zA-Z]+[0-9]+ &c
+print matches &c
+
+str replace &d og ef &c
+print replace &c
+
+str compose &c &a &b &d &e
+print compose &c
+
+return
+
