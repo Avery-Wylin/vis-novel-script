@@ -7,7 +7,7 @@ namespace GUI {
     FontInfo font;
     Shader text_shader, background_shader;
     VAO quad_vao;
-    float ratio = 2.0f, bevel = 30.0f, volume = .8, max_text_size = .5;
+    float ratio = 2.0f, bevel = 30.0f, volume = .8, max_text_size = .3;
     ElementSet *selection = nullptr;
     SoundBuffer sound_select, sound_hover;
     SoundSource sound_source;

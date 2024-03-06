@@ -270,12 +270,12 @@ void VNVariable::update_bool() {
 
     switch( type ) {
         case VAR_INT:
-            boolval = intval > 0;
+            boolval = intval;
             return;
 
         case VAR_FLOAT:
         case VAR_VEC:
-            boolval = floatvals[0] > 0;
+            boolval = floatvals[0];
             return;
 
         case VAR_STRING:

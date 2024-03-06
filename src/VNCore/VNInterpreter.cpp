@@ -11,6 +11,7 @@ namespace VNI{
     VNVariableContainer variables;
     VNInterpreter main_interpreter;
     std::unordered_map<std::string,VNCompiledFile> compiled_files;
+    std::unordered_map<std::string,VNOperation> aliases;
     std::string elem_text = "text", elem_name = "name";
     bool stopped = false;
 
@@ -177,29 +178,6 @@ bool VNInterpreter::execute_next(){
         return false;
 
     VNOperation& op = vncf->get_operations()[execution_line];
-    // If a filter was set only permit filter-removal operations
-    if(filtered){
-        if(
-            // Allow and block with arguments can only enable the filter
-            // Without args, allow will remove a filter
-            op.function_ptr != VNOP::allow &&
-            op.function_ptr != VNOP::block
-        ){
-            ++execution_line;
-            return true;
-        }
-    }
-
-    // If a match filter was set, only allow options and end_match operations
-    if(matching){
-        if(
-            op.function_ptr != VNOP::option &&
-            op.function_ptr != VNOP::end_match
-        ){
-            ++execution_line;
-            return true;
-        }
-    }
 
     // // If a jump function, do not increment, it will jump to the line it needs
     // // jump return is an exception, otherwise it would jump to the jump, thus looping endlessly

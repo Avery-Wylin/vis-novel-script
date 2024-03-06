@@ -59,7 +59,7 @@ sources = files(
 'VNOperationDefs/OperationsArithmetic.cpp',
 'VNOperationDefs/OperationsArmature.cpp',
 'VNOperationDefs/OperationsAudio.cpp',
-'VNOperationDefs/OperationsCharacter.cpp',
+'VNOperationDefs/OperationsDialogue.cpp',
 'VNOperationDefs/OperationsControl.cpp',
 'VNOperationDefs/OperationsGUI.cpp',
 'VNOperationDefs/OperationsImage.cpp',

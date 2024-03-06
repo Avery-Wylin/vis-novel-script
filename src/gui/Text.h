@@ -19,6 +19,7 @@ class Text {
         std::shared_ptr<VAO> vao;
         uint32_t vertexCount = 0;
         float width, height;
+        float line_wrap = 0, ideal_ratio = 1;
 
     public:
 
@@ -54,6 +55,7 @@ class Text {
         inline float get_height(){return height;};
         inline uint32_t get_selection_text(){return selStop-selStart;};
         inline uint32_t length(){return text.length();}
+        inline void set_ideal_ratio(float r){if(ideal_ratio != r){ideal_ratio = r; needsGenerated = true;}};
 
 
 };

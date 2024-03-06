@@ -69,9 +69,7 @@ bool VNOperation::construct( const std::vector<std::string> &tokens, uint8_t off
         }
     }
 
-    init_args(tokens, offset, vncf);
-
-    return validate(vncf);
+    return init_args(tokens, offset, vncf) && validate(vncf);
 }
 
 bool VNOperation::validate(VNCompiledFile &vncf) {
@@ -108,7 +106,7 @@ bool VNOperation::init_args(const std::vector<std::string> &tokens, uint8_t offs
             v.string_infer_cast();
             v.lock();
         }
-
         args.push_back( v );
     }
+    return true;
 }

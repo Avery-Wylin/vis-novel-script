@@ -29,7 +29,7 @@ class VNCompiledFile {
     void merge_between(char start, char stop, bool trim = false);
     bool variable_def();
     bool control_flow();
-    bool expression();
+    bool expression(uint32_t offset, VNOperation &op);
 
     std::stack<int32_t> cf_stack;
     std::stack<std::vector<int32_t>> end_jump_stack;

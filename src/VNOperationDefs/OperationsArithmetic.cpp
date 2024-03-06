@@ -10,55 +10,6 @@ namespace VNOP {
 
         format_map[expr] = {"expr &dest | args..."};
 
-        // math 1
-        operation_map["add"] = math_add;
-        format_map[math_add] = {"add -v1 -v2 &dest"};
-
-        operation_map["sub"] = math_sub;
-        format_map[math_sub] = {"sub -v1 -v2 &dest"};
-
-        operation_map["mul"] = math_mul;
-        format_map[math_mul] = {"mul -v1 -v2 &dest"};
-
-        operation_map["div"] = math_div;
-        format_map[math_div] = {"div -v1 -v2 &dest"};
-
-        operation_map["mod"] = math_mod;
-        format_map[math_mod] = {"mod -v1 -v2 &dest"};
-
-        operation_map["pow"] = math_pow;
-        format_map[math_pow] = {"pow -v1 -v2 &dest"};
-
-        operation_map["abs"] = math_abs;
-        format_map[math_abs] = {"abs -v1 -v2 &dest"};
-
-        operation_map["min"] = math_min;
-        format_map[math_min] = {"min -v1 -v2 &dest"};
-
-        operation_map["max"] = math_max;
-        format_map[math_max] = {"min -v1 -v2 &dest"};
-
-        operation_map["greater"] = math_greater;
-        format_map[math_greater] = {"min -v -threshold &bool"};
-
-        operation_map["lesser"] = math_lesser;
-        format_map[math_lesser] = {"lesser -v -threshold &bool"};
-
-        operation_map["invert"] = math_invert;
-        format_map[math_invert] = {"invert -v &dest"};
-
-        operation_map["ceil"] = math_ceil;
-        format_map[math_ceil] = {"ceil -v &dest"};
-
-        operation_map["floor"] = math_floor;
-        format_map[math_floor] = {"floor -v &dest"};
-
-        operation_map["interval"] = math_interval;
-        format_map[math_interval] = {"interval -v -fsnap &dest"};
-
-        operation_map["clamp"] = math_clamp;
-        format_map[math_clamp] = {"clamp -v -min -max &dest"};
-
         // vecmath 1
         operation_map["combine"] =  math_combine;
         format_map[math_combine] = {"combine &vec | -x -y -z -w"};
@@ -114,23 +65,6 @@ namespace VNOP {
 
         operation_map["at"] = at;
         format_map[at] = {"at -vec -index &component"};
-
-        // logic 1
-        operation_map["equals"] =  logic_equals;
-        format_map[logic_equals] = {"equals -v1 -v2_casted &bool"};
-
-        operation_map["negate"] =  logic_negate;
-        format_map[logic_negate] = {"negate -bool &!bool"};
-
-        operation_map["and"] =  logic_and;
-        format_map[logic_and] = {"and -b1 -b2 &bool"};
-
-        operation_map["or"] =  logic_or;
-        format_map[logic_or] = {"or -b1 -b2 &bool"};
-
-        operation_map["xor"] =  logic_xor;
-        format_map[logic_xor] = {"xor -b1 -b2 &bool"};
-
     }
 }
 
@@ -150,6 +84,8 @@ args[0].value_vec(s);\
 glm_vec_op(s,d);\
 dest.set(d);
 
+
+// This function now handles arithmetic and logic operations, it only works on floats
 void VNOP::expr(func_args){
     VNI::variables.at(args[0].var_id).set(ExpressionParser::run_expression(1, args, vni));
 }
@@ -161,141 +97,13 @@ void VNOP::cast_var( func_args ) {
 
     if( vid == 0 )
         return;
-    else if( args[1].value_string() == "float" )
-        args[1].cast( VAR_FLOAT );
-    if( args[1].value_string() == "int" )
-        args[1].cast( VAR_INT );
-    else if( args[1].value_string() == "bool" )
-        args[1].cast( VAR_BOOL );
-    else if( args[1].value_string() == "vec" )
-        args[1].cast( VAR_VEC );
-    else if( args[1].value_string() == "string" )
-        args[1].cast( VAR_STRING );
-}
-
-// Math
-
-// Math-Op <src> <other> <dest>
-void VNOP::math_add( func_args ) {
-    arithmetic_src_other_dest( glm_vec4_add )
-}
-void VNOP::math_sub( func_args ) {
-    arithmetic_src_other_dest( glm_vec4_sub );
-}
-void VNOP::math_mul( func_args ) {
-    arithmetic_src_other_dest( glm_vec4_mul )
-}
-void VNOP::math_div( func_args ) {
-    arithmetic_src_other_dest( glm_vec4_div )
-}
-void VNOP::math_mod( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    vec4 s, o, d = GLM_VEC4_ZERO_INIT;
-    args[0].value_vec( s );
-    args[1].value_vec( o );
-    d[0] = fmod( s[0], o[0] );
-    d[1] = fmod( s[1], o[1] );
-    d[2] = fmod( s[2], o[2] );
-    d[3] = fmod( s[3], o[3] );
-    dest.set( &d[0] );
-}
-void VNOP::math_pow( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    vec4 s, o, d = GLM_VEC4_ZERO_INIT;
-    args[0].value_vec( s );
-    args[1].value_vec( o );
-    d[0] = pow( s[0], o[0] );
-    d[1] = pow( s[1], o[1] );
-    d[2] = pow( s[2], o[2] );
-    d[3] = pow( s[3], o[3] );
-    dest.set( &d[0] );
-}
-void VNOP::math_min( func_args ) {
-    arithmetic_src_other_dest( glm_vec4_minv )
-}
-void VNOP::math_max( func_args ) {
-    arithmetic_src_other_dest( glm_vec4_maxv )
-}
-void VNOP::math_greater( func_args ) {
-
-    vec4 s, o, d = GLM_VEC4_ZERO_INIT;
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    args[0].value_vec( s );
-    args[1].value_vec( o );
-    d[0] = s[0] > o[0];
-    d[1] = s[1] > o[1];
-    d[2] = s[2] > o[2];
-    d[3] = s[3] > o[3];
-    dest.set( &d[0] );
-}
-void VNOP::math_lesser( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    vec4 s, o, d = GLM_VEC4_ZERO_INIT;
-    args[0].value_vec( s );
-    args[1].value_vec( o );
-    d[0] = s[0] < o[0];
-    d[1] = s[1] < o[1];
-    d[2] = s[2] < o[2];
-    d[3] = s[3] < o[3];
-    dest.set( &d[0] );
-}
-
-void VNOP::math_interval( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    vec4 s, o, d = GLM_VEC4_ZERO_INIT;
-    args[0].value_vec( s );
-    args[1].value_vec( o );
-    if( glm_vec4_eq( o, 0 ) )
-        return;
-    d[0] = floor( s[0] * o[0] ) / o[0];
-    d[1] = floor( s[1] * o[1] ) / o[1];
-    d[2] = floor( s[2] * o[2] ) / o[2];
-    d[3] = floor( s[3] * o[2] ) / o[3];
-    dest.set( &d[0] );
-}
-
-
-// Math-Op <src> <dest>
-void VNOP::math_abs( func_args ) {
-    arithmetic_src_dest( glm_vec4_abs )
-}
-void VNOP::math_invert( func_args ) {
-    arithmetic_src_dest( glm_vec4_inv_to )
-}
-void VNOP::math_ceil( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[1].var_id);
-    vec4 s, d = GLM_VEC4_ZERO_INIT;
-    args[0].value_vec( s );
-    d[0] = ceil( s[0] );
-    d[1] = ceil( s[1] );
-    d[2] = ceil( s[2] );
-    d[3] = ceil( s[3] );
-    dest.set( &d[0] );
-}
-void VNOP::math_floor( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[1].var_id);
-    vec4 s, d = GLM_VEC4_ZERO_INIT;
-    args[0].value_vec( s );
-    d[0] = floor( s[0] );
-    d[1] = floor( s[1] );
-    d[2] = floor( s[2] );
-    d[3] = floor( s[3] );
-    dest.set( &d[0] );
-}
-
-
-// Math-Op -v -min -max &dest
-void VNOP::math_clamp( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[3].var_id);
-    vec4 s, min, max, d = GLM_VEC4_ZERO_INIT;
-    args[0].value_vec( s );
-    args[1].value_vec( min );
-    args[2].value_vec( max );
-    d[0] = glm_clamp( s[0], min[0], max[0] );
-    d[1] = glm_clamp( s[1], min[1], max[1] );
-    d[2] = glm_clamp( s[2], min[2], max[2] );
-    d[3] = glm_clamp( s[3], min[3], max[3] );
-    dest.set( &d[0] );
+    switch(args[1].value_string()[0]){
+        case 'f': args[1].cast( VAR_FLOAT ); break;
+        case 'i': args[1].cast( VAR_INT ); break;
+        case 'b': args[1].cast( VAR_BOOL ); break;
+        case 'v': args[1].cast( VAR_VEC ); break;
+        case 's': args[1].cast( VAR_STRING ); break;
+    }
 }
 
 // vecmath
@@ -451,30 +259,5 @@ void VNOP::at( func_args ) {
     vec4 v;
     args[0].value_vec(v);
     dest.set(v[abs(args[1].value_int())%4]);
-}
-
-
-// logic-op -v1 -v2 &dest
-void VNOP::logic_equals( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    dest.set( !args[0].value_bool() == !args[1].value_bool() );
-}
-void VNOP::logic_and( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    dest.set( !args[0].value_bool() && !args[1].value_bool() );
-}
-void VNOP::logic_or( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    dest.set( !args[0].value_bool() || !args[1].value_bool() );
-}
-void VNOP::logic_xor( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[2].var_id);
-    dest.set( !args[0].value_bool() || !args[1].value_bool() );
-}
-
-// negate -v1 &dest
-void VNOP::logic_negate( func_args ) {
-    VNVariable &dest = VNI::variables.at(args[1].var_id);
-    dest.set( !args[0].value_bool() );
 }
 

@@ -130,7 +130,7 @@ void ElementSet::draw() {
     Shader::bind( GUI::text_shader );
     Shader::uniformMat4f( UNIFORM_CAMERA, ortho );
     GUI::font.fontTexture.bind( 0 );
-    float scale;
+    float scale = .2;
 
     Shader::uniformVec3f( UNIFORM_COLOR2, GUI::colors.decorator_active );
 
@@ -139,19 +139,25 @@ void ElementSet::draw() {
             continue;
 
         e->text->bind( GUI::font );
+
+        e->text->set_ideal_ratio(e->w/e->h);
+
         //only fill to 9 height
-        scale = fmin( e->w / e->text->get_width(), e->h / e->text->get_height() * .9 );
+        scale = fmin( e->w / e->text->get_width(), e->h / e->text->get_height() * .95 );
+
         // Adjust scale into uniform sizes, this keeps the UI consistent
         scale = scale > .2 ? floor( scale * 10 ) / 10 : scale;
+
         // Text scale is pulled away from the edges by setting it to .9
-        scale *= .9f;
+        scale *= .95f;
+
         // Limit to max text size
         scale = fmin(scale, GUI::max_text_size);
 
         // Text transform is 2d screen position and scale
         Shader::uniformVec3f( UNIFORM_TRANSFORM, vec3{
             // If left align, use half the fraction of the box not filled (1-.9)/2, if center align, use half the difference
-            e->x * GUI::ratio + ( e->flags & Element::LEFT_ALIGN ? .05f * e->w : 0.5f * ( e->w - e->text->get_width()*scale ) ),
+            e->x * GUI::ratio + ( e->flags & Element::LEFT_ALIGN ? .025f * e->w : 0.5f * ( e->w - e->text->get_width()*scale ) ),
             e->y + 0.5f * ( e->h + scale * e->text->get_height() ),
             scale}
         );

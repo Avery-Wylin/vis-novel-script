@@ -43,12 +43,20 @@ bool VNCompiledFile::load( std::string file ){
         // If the line is empty, stop reading multiple lines, pass the string to the operation dest, and continue
         if(line_in.empty()){
             if( reading_multi_line ){
-                // Multi-line operations are added as a final argument, no validation is performed
-                VNVariable v;
-                v.set(multi_line_string);
-                operations.back().args.push_back(v);
-                multi_line_string.clear();
                 reading_multi_line = false;
+
+                // If you forgot to put a string on the next line (it happens)
+                if(multi_line_string.empty()){
+                    operations.back().args.push_back("");
+                    continue;
+                }
+
+                // Remove the last new line, for it is not needed
+                multi_line_string.pop_back();
+
+                // Multi-line operations are added as a final argument, no validation is performed
+                operations.back().args.push_back(multi_line_string);
+                multi_line_string.clear();
             }
             continue;
         }
@@ -76,23 +84,37 @@ bool VNCompiledFile::load( std::string file ){
 // Merges all tokens starting with a one character and ending in another (inclusive), optionally trims off ends
 void VNCompiledFile::merge_between( char start, char stop, bool trim){
 
-    for( uint32_t i = 0; i < tokens.size(); ++i ) {
-        // Find a bracket and save its index, subsequent tokens not matching "}" are appended
 
+    for( uint32_t i = 0; i < tokens.size(); ++i ) {
+
+        // Empty case
+        if(trim && tokens[i].size() == 2 && tokens[i].starts_with(start) && tokens[i].ends_with(stop)){
+            tokens[i].clear();
+        }
+
+        // Token matches opening
         if( tokens[i].size() == 1 && tokens[i][0] == start ) {
 
-            for( uint32_t j = i + 1; j < tokens.size(); ++j ) {
-                tokens[i].append( " " + tokens[j] );
 
-                if( tokens[j].size() == 1 && tokens[j][0] == stop ) {
-                    tokens.erase( tokens.begin() + i + 1, tokens.begin() + j + 1 );
+            while(true){
+                if( i+1 >= tokens.size()){
+                    VNDebug::compile_error("Merging tokens failed", tokens[i], *this);
+                    return;
+                }
+
+                tokens[i].append(" " + tokens[i+1]);
+
+                if( tokens[i+1].size() == 1 && tokens[i+1][0] == stop ){
 
                     // trim "start space" then the following "space stop space"
                     if( trim )
                         tokens[i] = tokens[i].substr( 2, tokens[i].size() - 4 );
-                    i = j + 1;
+
+                    tokens.erase( tokens.begin() + i + 1);
                     break;
                 }
+
+                tokens.erase( tokens.begin() + i + 1);
             }
         }
     }
@@ -229,35 +251,37 @@ bool VNCompiledFile::control_flow(){
     return false;
 }
 
-bool VNCompiledFile::expression(){
-    if(tokens[0] != "expr" || tokens.size() < 3)
+// Creates an expression using the offset as the destination value, returns true if successful
+bool VNCompiledFile::expression(uint32_t offset, VNOperation &op){
+    if(tokens.size()-offset < 2)
         return false;
 
-    VNOperation op = {VNOP::expr, line_number};
+    op = {VNOP::expr, line_number};
 
     // Place the first arg
-    uint8_t vid = VNI::variables.get_id(tokens[1]);
+    uint8_t vid = VNI::variables.get_id(tokens[offset]);
     if(!vid){
-        VNDebug::compile_error("Undeclared variable", tokens[1],*this);
-        return true;
+        VNDebug::compile_error("Undeclared variable", tokens[offset],*this);
+        return false;
     }
     else{
-        op.args.push_back(VNVariable(tokens[1]));
+        op.args.push_back(VNVariable(tokens[offset]));
         op.args.back().var_id = vid;
     }
 
     // Merge back remaining tokens and pass to parser
     std::string ex;
-    for(uint8_t i = 2; i < tokens.size(); ++i){
+    for(uint8_t i = offset+1; i < tokens.size(); ++i){
         ex.append(tokens[i]+" ");
     }
 
     // If the parser was successful, append the operation
     if(ExpressionParser::parse_expression(ex, op, *this)){
-        operations.push_back(op);
+        return true;
     }
 
-    return true;
+    return false;
+
 }
 
 // Compiles a set of tokens into a VNOperation which can be easily called
@@ -282,11 +306,99 @@ void VNCompiledFile::compile(){
     merge_between('{','}');
     merge_between('"','"', true);
 
-    if(expression()){
+    // Create an alias reference
+    if(tokens[0].starts_with('$')){
+        const std::string& name = tokens[0].substr(1,tokens[0].size()-1);
+        if(VNI::aliases.contains(name)){
+            VNOperation op;
+            op.line_number = line_number;
+
+            // Make a clone if a multi-line op
+            OpFunc *f = VNI::aliases[name].function_ptr;
+            if(VNOP::format_map[f].reads_multiple_lines){
+
+                // Copy the operator, mark for multi-line reading which will set the last arg
+                op = VNI::aliases[name];
+                reading_multi_line = true;
+            }
+            // Make an alias reference to the operator
+            else{
+                op.function_ptr = VNOP::alias;
+                op.args.push_back(name);
+            }
+
+            operations.push_back(op);
+            return;
+        }
+        else{
+            VNDebug::compile_error("Alias not defined", line_in.substr(1,line_in.size()-1), *this);
+            return;
+        }
+    }
+
+    // Define an alias
+    if(tokens[0] == "alias"){
+        if(tokens.size() < 3){
+            VNDebug::compile_error("Aliases require a name and an operation", line_in, *this);
+            return;
+        }
+
+        VNOperation op;
+        op.line_number = line_number;
+
+        // Create an expression if it matches
+        if( tokens[2] == "expr" ) {
+            if( expression( 3, op ) )
+                VNI::aliases[tokens[1]] = op;
+            return;
+        }
+
+        // If the creation of the operation failed, return
+        if(op.construct(tokens, 2, *this)){
+            VNI::aliases[tokens[1]] = op;
+            return;
+        }
+    }
+
+    // Shorthand for say operator using @(variable name)
+    if(tokens[0].starts_with('@')){
+        // Convert the @ into an &
+        tokens[0][0] = '&';
+        VNOperation op;
+        op.line_number = line_number;
+
+        // If exactly one token, use say_start
+        if(tokens.size() == 1){
+            op.function_ptr = VNOP::say_start;
+        }
+        // If more than one token, use say_print
+        else{
+            op.function_ptr = VNOP::say_print;
+        }
+
+        // Validation is not necessary (no room for syntax error)
+        if(!op.init_args(tokens, 0, *this))
+            return;
+
+        if(VNOP::format_map[op.function_ptr].reads_multiple_lines)
+            reading_multi_line = true;
+
+        operations.push_back(op);
         return;
     }
 
-    // If the token is a control flow, it will handle itself and return early
+
+    // Compile an expression if encountered
+    if(tokens[0]=="expr"){
+        VNOperation op;
+        op.line_number = line_number;
+        if(expression(1,op)){
+            operations.push_back(op);
+        }
+        return;
+    }
+
+    // Compile a control flow statement
     if( control_flow() )
         return;
 

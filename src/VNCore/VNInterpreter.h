@@ -19,9 +19,6 @@ class VNInterpreter{
     int32_t execution_line = 0;
 
 public:
-    std::string match_filter;
-    bool filtered = false;
-    bool matching = false;
     bool is_routine = false;
 
     bool switch_file(std::string filename, bool link_return);
@@ -44,6 +41,7 @@ namespace VNI{
     extern VNVariableContainer variables;
     extern VNInterpreter main_interpreter;
     extern std::unordered_map<std::string,VNCompiledFile> compiled_files;
+    extern std::unordered_map<std::string,VNOperation> aliases;
     extern std::string elem_text, elem_name;
 
     // wait and wake should be called from external threads

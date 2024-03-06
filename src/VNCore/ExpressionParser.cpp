@@ -93,7 +93,7 @@ bool ExpressionParser::parse_expression(const std::string &exprstr, VNOperation 
     std::string ex = exprstr;
 
 
-    // Use Djkstra Shunting-Yard algorithm
+    // Use Djkstra's Shunting-Yard algorithm
     while(!ex.empty()){
 
         // Ignore whitespace
