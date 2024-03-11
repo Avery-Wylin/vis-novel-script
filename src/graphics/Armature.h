@@ -9,165 +9,204 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
-
 #include "View.h"
-
-using std::vector;
-using std::string;
-using std::unordered_map;
-
-static const uint8_t
-CONSTRAINT_NULL = 0,
-CONSTRAINT_SOFTBODY = 1,    // Use fixed time step verlet physics, chainable
-CONSTRAINT_TRACK = 2;       // Track joint to a fixed position in world space using closest rotation
+#include "ArmatureConstraints.h"
 
 class Armature;
+class ArmatureInfo;
+struct Animation;
+
+struct KeyPos {
+    vec3 pos = GLM_VEC3_ZERO_INIT;
+    float t = 0;
+};
+
+struct KeyRot {
+    versor rot =  GLM_QUAT_IDENTITY_INIT;
+    float t = 0;
+};
+
+struct AnimChannel {
+    uint8_t joint;
+    std::vector<KeyPos> positions;
+    std::vector<KeyRot> rotations;
+
+    // Get the value at a given time t in the channel
+    void value_pos(float t, vec3 v);
+    void value_rot(float t, versor v);
+};
 
 struct Animation {
-        struct Channel {
-            struct PosKey {
-                float t = 0;
-                vec3 v = GLM_VEC3_ZERO_INIT;
-            };
-            struct RotKey {
-                float t = 0;
-                versor v =  GLM_QUAT_IDENTITY_INIT;
-            };
+    std::string name;
+    float duration = 0;
+    std::vector<AnimChannel> channels;
 
-            uint8_t joint;
-            vector<PosKey> positions;
-            vector<RotKey> rotations;
-            void print() const;
-        };
+    // Set pose to match that at time t
+    void pose_set(Armature &a, float time);
 
-    float duration;
-    string name;
-    vector<Channel> channels;
-    void print()const;
-    void apply(Armature &a, float time)const;
+    // Add scaled pos at time t on to the current pose
+    void pose_add(Armature &a, float time, float mix_value);
+
+    // Mix the current pose with the pose at time t
+    void pose_mix(Armature &a, float time, float mix_value);
 };
 
-struct AnimationPlayData {
-    friend class Armature;
-    static const uint8_t TERMINAL = 0, LOOP = 1, BACK = 2, CLAMPED = 3;
-    float
-    playback_speed = 1.0f,
-    current_time = 0.0f;
-    const Animation *animation = nullptr;
-    uint8_t playback_type = TERMINAL;
+struct PlayData {
+    /*
+     * End Methods:
+     * END - stop playing the animation
+     * LOOP - repeats the animation until stopped
+     * BACK - does a single back before ending
+     * BACK_LOOPED - loops the animation in reverse when reaching the end
+     * CLAMPED - keeps applying the last pose of the animation
+     */
+    static const uint8_t END = 0, LOOP = 1, BACK = 2, BACK_LOOPED = 3, CLAMPED = 4;
+
+    /*
+     * Blend Methods:
+     * SET - Sets the keyframvalue, overwriting the animations below it
+     * ADD - Adds the animation on top of other animations below it
+     * MIX - Mixes the animation with those below it by its mix value
+     */
+    static const uint8_t SET = 0, ADD = 1, MIX = 2;
+
+    /*
+     * Overwrite Behaviors:
+     * WAIT - Does not touch the animation of the same ID until there is no matching animation
+     * UPDATE - Updates the values of the animation, but does not change the play time
+     * OVERWRITE - Overwrites the animation, essentially resetting it
+     */
+    static const uint8_t WAIT = 0, UPDATE = 1, OVERWRITE = 2;
+
+    float blend_factor = .5;
+    float speed = 1;
+    float time = 0;
+    float start = 0;
+    float stop = 0;
+    uint8_t animation_id = 0;
+    uint8_t end_method = END;
+    uint8_t blend_method = SET;
 };
 
-struct SoftbodyConstraint {
-    vec3 tail_pos = GLM_VEC3_ZERO_INIT;
-    vec3 last_tail_pos = GLM_VEC3_ZERO_INIT;
-    vec3 last_anim_pos = GLM_VEC3_ZERO_INIT;
-    float elasticity = 0.7;
-    float drag = 0.8;
-    float rigidity = 0.3;
-    float gravity = 1;
-    float joint_length = 0.1;
-    float friction = 0.4;
-    uint8_t parent_joint = 0;
-    uint8_t child_joint = 0;
-    uint8_t joint = 0;
+
+
+struct Joint{
+
+    std::string name;
+    std::vector<uint8_t> children;
+    uint8_t parent;
+    uint8_t constraint_id = 0;
+    uint8_t animation_applications = 0;
+
+    mat4 tr_inverse_rest = GLM_MAT4_IDENTITY_INIT;
+    mat4 tr = GLM_MAT4_IDENTITY_INIT;
+
+    vec3 pos = GLM_VEC3_ZERO_INIT;
+    versor rot = GLM_QUAT_IDENTITY_INIT;
+
 };
 
-class ArmatureInfo;
 
 class Armature {
-        friend class ArmatureInfo;
-        friend struct Animation;
+    friend ArmatureInfo;
+    friend Animation;
 
-    private:
-        ArmatureInfo *info;
-        struct Joint {
+    ArmatureInfo *info = nullptr;
+    std::vector<Joint> joints;
+    std::vector<std::unique_ptr<Constraint>> constraints;
 
-                vector<uint8_t> children;
-                mat4
-                inverse_rest = GLM_MAT4_IDENTITY_INIT,
-                transform = GLM_MAT4_IDENTITY_INIT;
-                vec3 old_world_pos = GLM_VEC3_ZERO_INIT;
-                versor old_world_rot = GLM_QUAT_IDENTITY_INIT;
-                vec3 local_pos = GLM_VEC3_ZERO_INIT;
-                versor local_rot = GLM_QUAT_IDENTITY_INIT;
-                uint8_t parent = 0;
-                uint8_t constraint_id = 0;
-                uint8_t constraint_type = 0;
-        };
+    // Applies all playing animations
+    void update_animations(float t);
 
-        vector<Joint> joints;
-        vector<AnimationPlayData> playing_animations;
-        vector<SoftbodyConstraint> softbody_constraints;
-        mat4 *transform_buffer = nullptr;
+public:
 
-        void assign_as_rest();
-        void apply_animations();
-        void update_transform_buffer();
+    Armature(){
+        // Add the null constraint since the default constraint id is 0
+        constraints.push_back(std::unique_ptr<Constraint>(new Constraint()));
+    }
 
-        void update_softbody_positions( SoftbodyConstraint &j);
-        void apply_softbody( SoftbodyConstraint &j);
+    std::unique_ptr<mat4> transform_buffer = nullptr;
+    std::vector<PlayData> play_data;
 
-    public:
-        Armature(){};
-        ~Armature(){
-            if(transform_buffer != nullptr){
-                delete[] transform_buffer;
-                transform_buffer = nullptr;
-            }
-        };
+    // Assigns the current transform for all joints as the new rest transform
+    void assign_rest();
 
-        float constraint_timestep;
+    // Applies all animations, constraints, and updates the transform buffer
+    void update(float t);
 
-        // Multiple animations can be played at once, however the same animation can't be played
-        // The order in which they are played matters since larger orders will override smaller ones
-        void assign(ArmatureInfo* info);
-        void copy(Armature& dest)const;
+    // Assigns an armature to an armature info
+    void assign_info(ArmatureInfo *info);
 
-        void play_animation( const Animation* anim, uint8_t playback_type, float speed, bool wait = false );
-        void stop_animation( const Animation* anim );
-        int get_playing_anim_id(const Animation* anim);
-        AnimationPlayData* get_playing_anim(const Animation* anim);
-        void clear_animations();
-        const Animation* get_animation(string name);
-        void set_time( float time );
-        void update(float t);
-        void interpolate(float t);
-        void set_root_transform(vec3 pos, versor rot, float scale);
+    // Copies an armature to another
+    void copy(Armature &dest);
 
-        mat4* get_transform_buffer();
+    // Adds a new playing animation
+    void play_animation(uint8_t anim,float speed, float start, float stop, uint8_t end_method, uint8_t blend_method, float blend_factor, uint8_t overwrite_method, bool add_bottom = false);
 
-        void add_softbody(string joint_name);
-        void add_softbody(string joint_name, float elasticity, float drag, float friction, float rigidity, float gravity, float default_length  = 0.1f);
+    // Returns whether or not the animation is being played
+    bool is_playing(uint8_t anim, uint8_t &play_id);
 
-        void print() const;
-        inline const vector<Joint>& getJoints(){return joints;};
-        inline bool empty(){return transform_buffer==nullptr;};
+    // Poses the armature to a specific animation time, can be mixed with the current pose
+    void pose(uint8_t anim, float time, float mix_factor);
+
+    // Poses using a mixture of 2 posed animations
+    void mix( uint8_t anim1, float t1, uint8_t anim2, float t2, float factor);
+
+    // Resets the pose to 0, displays the rest pose
+    void reset_pose();
+
+    // Add a softbody constraint (can't be removed)
+    void constraint_softbody(uint8_t joint_id, SoftbodySettings settings);
+
+    // Must be initialized, otherwise will crash
+    inline Joint& get_root(){return joints[0];}
+    inline Joint& get_joint(uint8_t joint_id){return joints[joint_id];}
+    inline ArmatureInfo* get_info() const{ return info; }
+    inline bool empty(){return !transform_buffer || !info || joints.empty();}
+
 
 };
 
 class ArmatureInfo {
-    private:
-        Armature armature;
-        vector<Animation> animations;
-        unordered_map<string, uint8_t> joint_names;
-        unordered_map<string, uint32_t> animation_names;
-    public:
-        inline const Armature &getArmature() {
-            return armature;
-        };
+    Armature armature;
 
-        ArmatureInfo(){
+    // Place an empty animation at the start of the list for null
+    std::vector<Animation> animations =  {Animation()};
 
+    std::unordered_map<std::string, uint8_t> joint_names;
+    std::unordered_map<std::string, uint8_t> animation_names;
+
+public:
+
+    inline Armature &get_aramture(){
+        return armature;
+    }
+
+    inline Animation &get_animation(uint8_t id){
+        return animations[id];
+    }
+
+    inline uint8_t get_animation_id(const std::string& name) const{
+        try{
+            return animation_names.at(name);
         }
-
-        ~ArmatureInfo(){
-
+        catch(std::out_of_range &oor){
+            return 0;
         }
+    }
 
-        Animation *get_animation( string &name );
-        uint8_t get_anim_id( string &name );
-        uint8_t get_joint( string &name );
-        bool load( string filename );
+    inline uint8_t get_joint_id(const std::string& name) const{
+        try{
+            return joint_names.at(name);
+        }
+        catch(std::out_of_range &oor){
+            return 0;
+        }
+    }
+
+    bool load(const std::string& filename);
+
+
 };
 
 

@@ -110,10 +110,15 @@ struct ObjectInstance {
     OWNER_IMG = 2;
 
     uint8_t owner_type = OWNER_NULL;
+    bool enabled = true;
+    bool updated = false;
     uint32_t owner = 0;
 
-    bool enabled = true;
 
+    Armature armature;
+    uint32_t parent = 0;
+    uint8_t parent_joint = 0;
+    std::vector<uint32_t> children;
     vec3 position = GLM_VEC3_ZERO_INIT;
     versor rotation = GLM_VEC3_ZERO_INIT;
     float scale = 1;
@@ -194,7 +199,8 @@ namespace VNAssets {
     bool link_model_to_shader(const std::string& model, const std::string& shader);
     bool link_object_to_model(const std::string& object, const std::string& model);
     bool link_object_to_image(const std::string& object, const std::string& image);
-    bool link_object_to_image(const std::string& object, const std::string& image);
+    bool parent_object(const std::string& child, const std::string& parent);
+    bool parent_joint(const std::string& child, const std::string& parent, const std::string& joint);
 
     void init();
     void close();

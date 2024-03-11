@@ -35,12 +35,17 @@ namespace VNOP {
         operation_map["str compose"] = str_compose;
         format_map[str_compose] = {"str compose &dest ..."};
 
+        operation_map["str from"] = str_from;
+        format_map[str_from] = {"str from &dest : "};
+
+        operation_map["str newline"] = str_newline;
+        format_map[str_newline] = {"str newline &dest"};
+
     }
 };
 
 // str concat <str> <append str> <dest>
 void VNOP::str_concat( func_args ) {
-    exact_args( 3 )
     dest_last
 
     dest.cast( VAR_STRING );
@@ -50,7 +55,6 @@ void VNOP::str_concat( func_args ) {
 
 // str clear <str>
 void VNOP::str_clear( func_args ) {
-    exact_args( 1 )
     dest_last
     dest.cast( VAR_STRING );
     dest.set( std::string("") );
@@ -58,14 +62,12 @@ void VNOP::str_clear( func_args ) {
 
 // str length <str> <length>
 void VNOP::str_length( func_args ) {
-    exact_args( 2 )
     dest_last
     dest.set( ( int )args[0].value_string().size() );
 }
 
 // str find <str> <regex> <begin> <end>
 void VNOP::str_find( func_args ) {
-    exact_args( 4 )
     std::regex r;
 
     try {
@@ -95,7 +97,6 @@ void VNOP::str_find( func_args ) {
 
 // str erase <str> <begin> <end> <dest>
 void VNOP::str_erase( func_args ) {
-    exact_args( 4 )
     dest_last
     string s = args[0].value_string();
     s.erase( s.begin() + args[1].value_int(), s.begin() + args[2].value_int() );
@@ -105,7 +106,6 @@ void VNOP::str_erase( func_args ) {
 
 // str trim <str> <begin> <end> <dest>
 void VNOP::str_trim( func_args ) {
-    exact_args( 4 )
     dest_last
     dest.cast( VAR_STRING );
     dest.set( args[0].value_string().substr( args[1].value_int(), args[2].value_int() ) );
@@ -113,7 +113,8 @@ void VNOP::str_trim( func_args ) {
 
 // str extract <str> <regex> <dest>
 void VNOP::str_extract( func_args ) {
-    exact_args( 3 )
+    if(args[0].value_string().empty())
+        return;
     dest_last
 
     dest.cast( VAR_STRING );
@@ -131,18 +132,19 @@ void VNOP::str_extract( func_args ) {
     std::string s = "";
     std::string v = args[0].value_string();
     std::string& cv = v;
-    for (std::smatch matches; std::regex_search(cv, matches, r);)
-    {
-        s.append( matches.str() );
-        cv = matches.suffix();
-    }
+    std::smatch matches; std::regex_search(cv, matches, r);
+    // for (std::smatch matches; std::regex_search(cv, matches, r);)
+    // {
+    //     s.append( matches.str() );
+    //     cv = matches.suffix();
+    // }
+    s = matches.str();
 
     dest.set( s );
 }
 
 // str matches <str> <regex> <bool>
 void VNOP::str_matches( func_args ) {
-    exact_args( 3 )
     dest_last
 
     dest.cast( VAR_STRING );
@@ -162,7 +164,6 @@ void VNOP::str_matches( func_args ) {
 
 // str replace <str> <regex> <val> <dest>
 void VNOP::str_replace( func_args ) {
-    exact_args( 4 )
     dest_last
 
     dest.cast( VAR_STRING );
@@ -182,8 +183,6 @@ void VNOP::str_replace( func_args ) {
 
 // str compose <str> <vars...>
 void VNOP::str_compose( func_args ) {
-    ensure_args( 1 )
-
     if( args[0].var_id == 0 )
         return;
 
@@ -197,3 +196,18 @@ void VNOP::str_compose( func_args ) {
 
     dest.set( s );
 }
+
+// str from &dest :
+void VNOP::str_from(func_args){
+    VNVariable& dest = VNI::variables.at(args[0].var_id);
+    dest.cast(VAR_STRING);
+    dest.set(args[1].value_string());
+}
+
+// str line &dest :
+void VNOP::str_newline(func_args){
+    VNVariable& dest = VNI::variables.at(args[0].var_id);
+    dest.cast(VAR_STRING);
+    dest.set(dest.value_string()+'\n');
+}
+

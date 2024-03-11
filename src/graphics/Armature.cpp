@@ -5,501 +5,464 @@
 #include <iostream>
 #include <cstring>
 
-float bouyancy_height = 0;
+/*
+ * Anim Channel
+ */
 
-void Armature::assign( ArmatureInfo *info ) {
-    info->getArmature().copy( *this );
+void AnimChannel::value_pos(float t, vec3 v){
+    // Set the default return key out of range
+    uint16_t k = positions.size();
+
+    // Quick check out of range
+    if(t > positions.back().t){
+        glm_vec3_copy(positions.back().pos, v);
+        return;
+    }
+
+    // Find the first key that exceeds the time sought
+    for(uint16_t i = 0; i < positions.size(); ++i){
+        if(positions[i].t > t){
+            k = i;
+            break;
+        }
+    }
+
+    // If none found, assume out of range (this should have been caught by the first check)
+    if(k == positions.size()){
+        glm_vec3_copy(positions.back().pos, v);
+        return;
+    }
+
+    // Pre-Animation times are considered invalid and thus do nothing
+    else if( k > 0){
+        // The time t must be greater than the time at k-1 and less than k, lerp between the two
+        glm_vec3_lerp(positions[k-1].pos, positions[k].pos, (t-positions[k-1].t) / (positions[k].t - positions[k-1].t), v );
+    }
 }
 
-void Armature::copy( Armature &dest ) const {
-    if( dest.info == info )
+void AnimChannel::value_rot(float t, versor v){
+    // Set the default return key out of range
+    uint16_t k = rotations.size();
+
+    // Quick check out of range
+    if(t > rotations.back().t){
+        glm_quat_copy(rotations.back().rot, v);
         return;
-    dest.info = info;
-    if( dest.transform_buffer != nullptr ) {
-        delete[] dest.transform_buffer;
     }
-    dest.transform_buffer = new mat4[joints.size()];
-    memcpy( dest.transform_buffer, transform_buffer, joints.size()*sizeof( mat4 ) );
+
+    // Find the first key that exceeds the time sought
+    for(uint16_t i = 0; i < rotations.size(); ++i){
+        if(rotations[i].t > t){
+            k = i;
+            break;
+        }
+    }
+
+    // If none found, assume out of range (this should have been caught by the first check)
+    if(k == rotations.size()){
+        glm_quat_copy(rotations.back().rot, v);
+        return;
+    }
+
+    // Pre-Animation times are considered invalid and thus do nothing
+    else if( k > 0){
+        // The time t must be greater than the time at k-1 and less than k, lerp between the two
+        glm_quat_nlerp(rotations[k-1].rot, rotations[k].rot, (t-rotations[k-1].t) / (rotations[k].t - rotations[k-1].t), v );
+    }
+}
+
+
+/*
+ * Animation
+ */
+
+void Animation::pose_set(Armature &a, float time){
+    for(AnimChannel &c : channels){
+        c.value_pos(time, a.joints[c.joint].pos);
+        c.value_rot(time, a.joints[c.joint].rot);
+    }
+}
+
+void Animation::pose_add(Armature &a, float time, float mix_value){
+    vec3 p;
+    versor r;
+    vec3 axis;
+    float angle;
+    for(AnimChannel &c : channels){
+        c.value_pos(time, p);
+        c.value_rot(time, r);
+        glm_vec3_muladds(p, mix_value, a.joints[c.joint].pos);
+
+        // Extract the axis and angle from the rotations
+        angle = glm_quat_angle(r);
+        glm_quat_axis(r,axis);
+
+        // Scale the angle component only then apply on top of pose
+        angle *= mix_value;
+        glm_quatv(r, angle, axis);
+        glm_quat_mul(a.joints[c.joint].rot, r, a.joints[c.joint].rot);
+    }
+}
+
+void Animation::pose_mix( Armature &a, float time, float mix_value ) {
+    vec3 p;
+    versor r;
+
+    for( AnimChannel &c : channels ) {
+        c.value_pos( time, p );
+        c.value_rot( time, r );
+        glm_vec3_lerp( a.joints[c.joint].pos, p, mix_value,  a.joints[c.joint].pos);
+        glm_quat_nlerp( a.joints[c.joint].rot, r, mix_value,  a.joints[c.joint].rot);
+    }
+}
+
+/*
+ * Armature
+ */
+
+void Armature::assign_rest(){
+    if(joints.empty())
+        return;
+
+    // Clear the inverse rest of the root
+    glm_mat4_identity(joints[0].tr_inverse_rest);
+
+    for(uint8_t i = 1; i < joints.size(); ++i){
+        // Copy the inverse rest of the parent to the child
+        glm_mat4_copy(joints[joints[i].parent].tr_inverse_rest, joints[i].tr_inverse_rest);
+
+        // Translate and rotate on top of the inverse rest
+        glm_translate(joints[i].tr_inverse_rest, joints[i].pos);
+        glm_quat_rotate(joints[i].tr_inverse_rest, joints[i].rot, joints[i].tr_inverse_rest);
+    }
+
+    // Inverse the rest transform now that they have all updated
+    for(uint8_t i = 1; i < joints.size(); ++i){
+        glm_inv_tr(joints[i].tr_inverse_rest);
+    }
+}
+
+void Armature::update(float t){
+
+    // Update all animations
+    update_animations(t);
+
+    // Root is ignored, root is set elsewhere
+    for(uint8_t i = 1; i < joints.size(); ++i){
+        Joint &j = joints[i];
+
+        // Update the local transform
+        glm_translate_make(j.tr, j.pos);
+        glm_quat_rotate(j.tr, j.rot, j.tr);
+
+        // Apply on top of parent (parents always have a lower index and have already updated)
+        glm_mul(joints[j.parent].tr, j.tr, j.tr);
+
+        // Apply constraints (if present)
+        if(j.constraint_id != 0){
+            constraints[j.constraint_id]->update(j);
+            constraints[j.constraint_id]->apply(j);
+        }
+    }
+
+    // Place into the transform buffer relative to the inverse transform (ignore root, it is not needed)
+    for(uint8_t i = 1; i < joints.size(); ++i){
+        glm_mat4_mul(joints[i].tr, joints[i].tr_inverse_rest, ((mat4*)transform_buffer.get())[i] );
+    }
+}
+
+
+void Armature::assign_info(ArmatureInfo *info){
+    info->get_aramture().copy(*this);
+}
+
+void Armature::copy(Armature &dest){
+    if(empty())
+        return;
+
+    // Reallocate transform buffer and copy data
+    transform_buffer = std::unique_ptr<mat4>(new mat4[joints.size()]);
+    memcpy(dest.transform_buffer.get(), transform_buffer.get(), joints.size()*sizeof(mat4));
+
+    // Delete all constraints
+    dest.constraints.clear();
+
+    // Re-add constraints
+    for(const auto& c: constraints)
+        dest.constraints.push_back(c->get_copy());
+
+    // Copy joints and playing animations
     dest.joints = joints;
+    dest.play_data = play_data;
 }
 
-void Armature::assign_as_rest() {
-    // Convert all local transforms into rest transforms
-    if( joints.empty() )
+void Armature::play_animation(uint8_t anim, float speed, float start, float stop, uint8_t end_method, uint8_t blend_method,  float blend_factor, uint8_t overwrite_method, bool add_bottom){
+    if(empty())
         return;
 
-    // Find object-space transform of each joint
-    // parent's do not need checked because of how the hierarchy is loaded
-    glm_mat4_identity( joints[0].inverse_rest );
-    for( uint8_t i = 1; i < joints.size(); ++i ) {
-        glm_mat4_copy( joints[joints[i].parent].inverse_rest, joints[i].inverse_rest );
-        glm_translate( joints[i].inverse_rest, joints[i].local_pos );
-        glm_quat_rotate( joints[i].inverse_rest, joints[i].local_rot, joints[i].inverse_rest );
-    }
+    uint8_t play_id;
+    if(is_playing(anim, play_id)){
 
-    // Invert the rest transforms
-    for( uint8_t i = 1; i < joints.size(); ++i ) {
-        glm_inv_tr( joints[i].inverse_rest );
-    }
-
-}
-
-void Armature::update_transform_buffer() {
-
-    // For each joint that updated, mark children as updated and calculate new buffer
-    for( uint8_t i = 1; i < joints.size(); ++i ) {
-
-        // Update local transform
-        glm_vec3_copy(joints[i].transform[3], joints[i].old_world_pos);
-        glm_mat4_quat(joints[i].transform, joints[i].old_world_rot);
-        glm_mat4_identity( joints[i].transform );
-        glm_translate( joints[i].transform, joints[i].local_pos );
-        glm_quat_rotate( joints[i].transform, joints[i].local_rot, joints[i].transform );
-
-        // Append on top of parent joint
-        glm_mul(
-            joints[joints[i].parent].transform,
-            joints[i].transform,
-            joints[i].transform
-        );
-
-        // Softbody constraint
-        if( joints[i].constraint_type == CONSTRAINT_SOFTBODY ) {
-            update_softbody_positions( softbody_constraints[joints[i].constraint_id] );
-            apply_softbody( softbody_constraints[joints[i].constraint_id] );
-        }
-
-    }
-
-    // Transform to local space and place into transform buffer
-    for( int i = 1; i < joints.size(); ++i ) {
-        glm_mat4_mul( joints[i].transform, joints[i].inverse_rest, transform_buffer[i] );
-    }
-}
-
-void Armature::play_animation( const Animation *anim, uint8_t playback_type, float speed, bool wait ) {
-    // Animation not found
-    if( anim == nullptr )
-        return;
-    AnimationPlayData *playanim = get_playing_anim( anim );
-    // Animation is already playing, replace it
-    if( playanim ) {
-        // Wait for the animation to finish, do not restart
-        if(wait)
+        // Return if overwrite method is wait
+        if(overwrite_method == PlayData::WAIT)
             return;
-        playanim->current_time = 0;
-        playanim->playback_type = playback_type;
-        playanim->playback_speed = speed;
+
+        // do not change the time, but update the play data, this is for update and overwrite
+        play_data[play_id].speed = speed;
+        play_data[play_id].end_method = end_method;
+        play_data[play_id].blend_method = blend_method;
+        play_data[play_id].blend_factor = blend_factor;
+
+        play_data[play_id].start = fmax(0, start);
+        play_data[play_id].stop = fmin(play_data[play_id].stop, info->get_animation(anim).duration);
+        play_data[play_id].start = fmin(play_data[play_id].stop, play_data[play_id].start);
+
+        // Update time if overwrite
+        if(overwrite_method == PlayData::OVERWRITE){
+            play_data[play_id].time = start;
+        }
+    }
+
+    // Create a new animation
+    else{
+        PlayData pd;
+        pd.animation_id = anim;
+        pd.speed = speed;
+        pd.end_method = end_method;
+        pd.blend_method = blend_method;
+        pd.time = start;
+        pd.blend_factor = blend_factor;
+
+        pd.start = fmax(0, start);
+        pd.stop = fmin(pd.stop, info->get_animation(anim).duration);
+        pd.start = fmin(pd.stop, pd.start);
+
+        if(add_bottom)
+            play_data.insert(play_data.begin(),pd);
+        else
+            play_data.push_back(pd);
+    }
+}
+
+bool Armature::is_playing(uint8_t anim, uint8_t &play_id){
+    for(uint8_t i = 0; i < play_data.size(); ++i){
+        if( play_data[i].animation_id == anim){
+            play_id = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+void Armature::pose(uint8_t anim, float time, float mix_factor){
+    if(empty())
         return;
-    }
-    // Create a new playing animation
-    playing_animations.push_back( AnimationPlayData() );
-    playing_animations.back().animation = anim;
-    playing_animations.back().playback_type = playback_type;
-    playing_animations.back().playback_speed = speed;
+    info->get_animation(anim).pose_mix(*this, time, mix_factor);
 }
 
-void Armature::stop_animation( const Animation *anim ) {
-    int id = get_playing_anim_id( anim );
-    if( id < 0 )
+void Armature::mix( uint8_t anim1, float t1, uint8_t anim2, float t2, float factor){
+    if(empty())
         return;
-    playing_animations.erase( playing_animations.begin() + id );
+    info->get_animation(anim1).pose_set(*this, t1);
+    info->get_animation(anim2).pose_mix(*this, t2, factor);
 }
 
-int Armature::get_playing_anim_id( const Animation *anim ) {
-    for( int i = 0; i < playing_animations.size(); ++i ) {
-        if( playing_animations[i].animation == anim )
-            return i;
+void Armature::reset_pose(){
+    for(Joint &j : joints){
+        glm_vec3_zero(j.pos);
+        glm_quat_identity(j.rot);
     }
-    return -1;
+    update(0);
 }
 
-AnimationPlayData *Armature::get_playing_anim( const Animation *anim ) {
-    for( AnimationPlayData &p : playing_animations ) {
-        if( p.animation == anim )
-            return &p;
-    }
-    return nullptr;
-}
+void Armature::update_animations(float t){
+    if(empty())
+        return;
 
-void Armature::clear_animations() {
-    playing_animations.clear();
-}
-
-void Armature::set_time( float time ) {
-    for( AnimationPlayData &p : playing_animations ) {
-        p.current_time = time * p.playback_speed;
-    }
-}
-
-void Armature::update(float t) {
-    for( AnimationPlayData &p : playing_animations ) {
-        p.current_time += t * p.playback_speed;
-    }
-
-    // WARNING small numbers will mess this up, try to avoid using high FPS as update time, use interpolation instead
-    // For this particular projects, a high FPS is not waranted, nor is there any reason to ever change the FPS
-    // This number is ideally around .05
-    constraint_timestep = t;
-    apply_animations();
-    update_transform_buffer();
-}
+    // Update the animation times
+    for(uint8_t i = 0; i < play_data.size(); ++i){
+        PlayData &pd = play_data[i];
+        Animation &anim = info->get_animation(pd.animation_id);
 
 
-void Armature::interpolate(float t){
-    vec3 pos;
-    versor rot;
-    mat4 tr;
-    for( int i = 0; i < joints.size(); ++i ) {
-       glm_mat4_quat(joints[i].transform, rot);
-       glm_vec3_lerp(joints[i].old_world_pos, joints[i].transform[3], t, pos);
-       glm_quat_nlerp(joints[i].old_world_rot, rot, t, rot);
-       glm_translate_make(tr, pos);
-       glm_quat_rotate(tr, rot, tr);
-       glm_mat4_mul(tr, joints[i].inverse_rest, transform_buffer[i]);
-    }
-};
+        // Update animation time
+        pd.time += t*pd.speed;
+        if(pd.time > pd.stop || pd.time < pd.start){
 
-void Armature::set_root_transform(vec3 pos, versor rot, float scale){
-    glm_vec3_copy(joints[0].local_pos, joints[0].old_world_pos);
-    glm_quat_copy(joints[0].local_rot, joints[0].old_world_rot);
-    glm_vec3_copy(pos, joints[0].local_pos);
-    glm_quat_copy(rot, joints[0].local_rot);
+            switch(pd.end_method){
 
-    glm_quat_mat4(rot, joints[0].transform);
-    glm_scale_uni(joints[0].transform, scale);
-    glm_vec3_copy(pos, joints[0].transform[3]);
-}
+                case PlayData::END:
+                    play_data.erase(play_data.begin()+i);
+                    --i;
+                    continue;
 
-void Armature::apply_animations() {
-    float t;
-    for( unsigned int i = 0; i < playing_animations.size(); ++i ) {
-        AnimationPlayData &p = playing_animations[i];
-
-        // End behavior for animations
-        if( p.current_time > p.animation->duration || p.current_time < 0 )
-            switch( p.playback_type ) {
-
-                // Mdodulate the current animation time to the duration forcing playback to start over
-                case AnimationPlayData::LOOP :
-                    p.current_time = fmod( p.animation->duration + p.current_time, p.animation->duration );
+                case PlayData::BACK_LOOPED:
+                    pd.speed *= -1;
+                case PlayData::LOOP:
+                    pd.time = fmod(pd.time-pd.start, pd.stop-pd.start) + pd.start;
                     break;
 
-                // Inverse the playback speed when the duration is passed, reverses the animation
-                case AnimationPlayData::BACK:
-                    p.playback_speed *= -1;
+                case PlayData::BACK:
+                    pd.speed *= -1;
+                case PlayData::CLAMPED:
+                    pd.time = glm_clamp(pd.time, pd.start, pd.stop);
                     break;
 
-                // Clamp the time to the last frame
-                case AnimationPlayData::CLAMPED:
-                    p.current_time = p.animation->duration;
-                    break;
-
-                // Clamp to the duration of the animation from 0 to duration
-                default:
-                case AnimationPlayData::TERMINAL:
-                    p.current_time = fmax( fmin( p.current_time, p.animation->duration ), 0 );
-                    // TODO Stop the animation?
-                    playing_animations.erase(playing_animations.begin()+i);
-                    break;
             }
-        p.animation->apply( *this, p.current_time );
-    }
-}
+        }
 
-const Animation *Armature::get_animation( string name ) {
-    return info->get_animation( name );
-}
-
-void Animation::apply( Armature &a, float time ) const {
-    unsigned int poskeyindex, rotkeyindex;
-    for( const Channel &c : channels ) {
-        poskeyindex = c.positions.size();
-        for( unsigned int i = 0; i < c.positions.size(); ++i ) {
-            if( c.positions[i].t > time ) {
-                poskeyindex = i;
+        // Apply the animation by posing the armature
+        switch(pd.blend_method){
+            case PlayData::SET:
+                anim.pose_set(*this, pd.time);
                 break;
-            }
-        }
-        // Apply post-animation deformation
-        if( poskeyindex == c.positions.size() ) {
-            glm_vec3_copy( const_cast<vec3 &>( c.positions.back().v ), a.joints[c.joint].local_pos );
-        }
-        // Skip pre-animation deformation, apply interpolation
-        else if( poskeyindex != 0 ) {
-            glm_vec3_lerp(
-                const_cast<vec3 &>( c.positions[poskeyindex - 1].v ),
-                const_cast<vec3 &>( c.positions[poskeyindex].v ),
-                ( time - c.positions[poskeyindex - 1].t ) / ( c.positions[poskeyindex].t - c.positions[poskeyindex - 1].t ),
-                a.joints[c.joint].local_pos
-            );
-        }
-
-        rotkeyindex = c.rotations.size();
-        for( unsigned int i = 0; i < c.rotations.size(); ++i ) {
-            if( c.rotations[i].t > time ) {
-                rotkeyindex = i;
+            case PlayData::MIX:
+                anim.pose_mix(*this, pd.time, pd.blend_factor);
                 break;
-            }
+            case PlayData::ADD:
+                anim.pose_add(*this, pd.time, pd.blend_factor);
+                break;
         }
-        // Apply post-animation deformation
-        if( rotkeyindex == c.rotations.size() ) {
-            glm_quat_copy( const_cast<versor &>( c.rotations.back().v ), a.joints[c.joint].local_rot );
-        }
-        // Skip pre-animation deformation, apply interpolation
-        else if( rotkeyindex != 0 ) {
-            glm_quat_nlerp(
-                const_cast<versor &>( c.rotations[rotkeyindex - 1].v ),
-                const_cast<versor &>( c.rotations[rotkeyindex].v ),
-                ( time - c.rotations[rotkeyindex - 1].t ) / ( c.rotations[rotkeyindex].t - c.rotations[rotkeyindex - 1].t ),
-                a.joints[c.joint].local_rot
-            );
-        }
-
     }
 }
 
-mat4 *Armature::get_transform_buffer() {
-    return transform_buffer;
-}
+void Armature::constraint_softbody(uint8_t joint_id, SoftbodySettings settings){
+    if(empty())
+        return;
+    Joint &j = joints[joint_id];
 
-void Armature::add_softbody( std::string joint_name ) {
-    add_softbody( joint_name, 0.8, 0.7, 0.4, 0.3, 1, 0.1 );
-}
-
-void Armature::add_softbody( string joint_name, float elasticity, float drag, float friction, float rigidity, float gravity, float default_length ) {
-    uint32_t joint_id = info->get_joint( joint_name );
-    if( joint_id == 0 ) {
-        std::cout << "Could not create softbody constraint for " << joint_name << ": Unknown joint name" << std::endl;
+    // Update the settings of an already existing constraint
+    if(j.constraint_id != 0 && constraints[j.constraint_id]->type == Constraint::SOFTBODY){
+        ((ConstraintSoftbody*)constraints[j.constraint_id].get())->settings = settings;
         return;
     }
-    if( joints[joint_id].constraint_type == CONSTRAINT_SOFTBODY ) {
-        SoftbodyConstraint &softbody = softbody_constraints[joints[joint_id].constraint_id];
-        softbody.elasticity = elasticity;
-        softbody.drag = drag;
-        softbody.friction = friction;
-        softbody.rigidity = rigidity;
-        softbody.gravity = gravity;
-        softbody.joint_length = default_length;
+    else if(j.constraint_id != 0){
+        printf("Failed to add softbody: joint %s already has a constraint of another type\n", j.name.c_str());
+        fflush(stdout);
+        return;
     }
-    else if( softbody_constraints.size() < UINT8_MAX  && joints[joint_id].constraint_type == CONSTRAINT_NULL ) {
-        SoftbodyConstraint softbody;
-        softbody.joint = joint_id;
-        softbody.elasticity = elasticity;
-        softbody.drag = drag;
-        softbody.friction = friction;
-        softbody.rigidity = rigidity;
-        softbody.gravity = gravity;
-        softbody.joint_length = default_length;
+    // Joint does not already have a constraint
+    else{
+        ConstraintSoftbody sb;
+        sb.joint = joint_id;
+        sb.settings = settings;
 
-        // Forbid making a parent joint with more than one constrained child
-        int child_constraint = -1;
-        for( uint8_t child_id : joints[joint_id].children ) {
-            if( child_id != 0 && joints[child_id].constraint_type == CONSTRAINT_SOFTBODY ) {
-                if( child_constraint >= 0 ) {
-                    std::cout << "Could not create softbody constraint for " << joint_name << ": Has more than one constrained child" << std::endl;
+        // Use this to mark if a constrained child exists
+        uint8_t child_constraint = 0,
+        child_id = 0;
+
+        // Forbid making a parent joint if more than one softbody chain would be made
+        for(uint8_t c : j.children){
+            Joint &child = joints[c];
+            std::unique_ptr<Constraint> &cc = constraints[child.constraint_id];
+
+            // If there is a child that isnt root and the child has a softbody constraint
+            if(c != 0 && cc->type == Constraint::SOFTBODY){
+
+                // A child was already set, do not add a constraint
+                if(child_constraint){
+                    printf("Failed to add softbody: joint %s has more than one constrained child\n",j.name.c_str());
+                    fflush(stdout);
                     return;
                 }
-                child_constraint = joints[child_id].constraint_id;
+
+                // Place the child constraint id in to the child_constraint slot
+                child_constraint = child.constraint_id;
+                child_id = c;
             }
         }
 
-        // Forbid placing a jiggle constraint on a parent that already has a jiggle constraint with a child
-        uint8_t parent_constraint = joints[joints[joint_id].parent].constraint_id;
-        if( joints[joints[joint_id].parent].constraint_type == CONSTRAINT_SOFTBODY ) {
-            if( softbody_constraints[parent_constraint].child_joint != 0 ) {
-                std::cout << "Could not create softbody constraint for " << joint_name << ": Parent already has constrained child" << std::endl;
+        // Forbid placing a softbody on a parent that already has a chained softbody
+        Joint &parent = joints[j.parent];
+        std::unique_ptr<Constraint> &pc = constraints[parent.constraint_id];
+
+        if(pc->type == Constraint::SOFTBODY){
+
+            // Add as the softbody parent
+            sb.parent_softbody = ((ConstraintSoftbody*)pc.get());
+
+            // Sibling has a softbody
+            if(((ConstraintSoftbody*)pc.get())->child_joint != 0){
+                printf("Failed to add softbody: joint %s has a sibling with a softbody constraint\n",j.name.c_str());
+                fflush(stdout);
                 return;
             }
-            else {
-                // set child of parent to this if it does not have a child
-                softbody_constraints[parent_constraint].child_joint = joint_id;
-                softbody.parent_joint = joints[joint_id].parent;
+            // Parent has a softbody, but no siblings do
+            else{
 
-                // update parent length (in the case of multiple children and one is not chosen)
+                // Create relationship
+                ((ConstraintSoftbody*)pc.get())->child_joint = joint_id;
+                sb.parent_joint = j.parent;
+
+                // Find the rest positions of the joints to use as joint length
                 mat4 tr;
-                vec3 head = GLM_VEC3_ZERO_INIT, tail = GLM_VEC3_ZERO_INIT;
-                glm_mat4_inv( joints[softbody.parent_joint].inverse_rest, tr );
-                glm_mat4_mulv3( tr, head, 1, head );
-                glm_mat4_inv( joints[softbody.joint].inverse_rest, tr );
-                glm_mat4_mulv3( tr, tail, 1, tail );
-                softbody_constraints[parent_constraint].joint_length = glm_vec3_distance( head, tail );
-            }
-        }
-        // If a constrained parent does not exist, keep the parent as null (0)
+                vec3 head, tail;
+                glm_mat4_inv(parent.tr_inverse_rest, tr);
+                glm_mat4_mulv3(tr, head, 1, head);
+                glm_mat4_inv(j.tr_inverse_rest, tr);
+                glm_mat4_mulv3(tr, tail, 1 , tail);
 
-        // Update child now that the cases were checked
-        if( child_constraint >= 0 ) {
-            softbody_constraints[child_constraint].parent_joint = joint_id;
-            softbody.child_joint = softbody_constraints[child_constraint].joint;
-
-            // Calculate default distance using rest transform
-            mat4 tr;
-            vec3 head = GLM_VEC3_ZERO_INIT, tail = GLM_VEC3_ZERO_INIT;
-            glm_mat4_inv( joints[softbody.joint].inverse_rest, tr );
-            glm_mat4_mulv3( tr, head, 1, head );
-            glm_mat4_inv( joints[softbody.child_joint].inverse_rest, tr );
-            glm_mat4_mulv3( tr, tail, 1, tail );
-            softbody.joint_length = glm_vec3_distance( head, tail );
-        }
-        // Optional calculation of length if only one joint present
-        else if( joints[joint_id].children.size() == 1 ) {
-            mat4 tr;
-            vec3 head = GLM_VEC3_ZERO_INIT, tail = GLM_VEC3_ZERO_INIT;
-            glm_mat4_inv( joints[softbody.joint].inverse_rest, tr );
-            glm_mat4_mulv3( tr, head, 1, head );
-            glm_mat4_inv( joints[joints[softbody.joint].children[0]].inverse_rest, tr );
-            glm_mat4_mulv3( tr, tail, 1, tail );
-            softbody.joint_length = glm_vec3_distance( head, tail );
-            std::cout << joint_name << ' ' << softbody.joint_length << std::endl;
-        }
-
-        int insert_index = softbody_constraints.size();
-        for( int i = 0; i < softbody_constraints.size(); ++i ) {
-            if( softbody_constraints[i].joint > joint_id ) {
-                insert_index = i;
-                break;
+                ((ConstraintSoftbody*)pc.get())->settings.joint_length = glm_vec3_distance(head, tail);
             }
         }
 
-        joints[joint_id].constraint_id =  softbody_constraints.size();
-        joints[joint_id].constraint_type = CONSTRAINT_SOFTBODY;
+        // Parent does not have a softbody constraint (parent == root)
+        // All fail cases have been checked
 
-        // Insert with smallest joint id first
-        softbody_constraints.insert( softbody_constraints.begin() + insert_index, softbody );
+        if(child_constraint){
 
-        // Update indices after insertion
-        for( int i = insert_index; i < softbody_constraints.size(); ++i ) {
-            joints[softbody_constraints[i].joint].constraint_id = i;
+            // Update the child constraint's relation (note that the child needs the parent constraint linked once sb is added to the constraint list)
+            ((ConstraintSoftbody*)constraints[child_constraint].get())->parent_joint = joint_id;
+            sb.child_joint = child_id;
+
+            // Use this child to determine joint length
+            mat4 tr;
+            vec3 head, tail;
+            glm_mat4_inv(j.tr_inverse_rest, tr);
+            glm_mat4_mulv3(tr, head, 1, head);
+            glm_mat4_inv(joints[child_id].tr_inverse_rest, tr);
+            glm_mat4_mulv3(tr, tail, 1 , tail);
+            sb.settings.joint_length = glm_vec3_distance(head, tail);
         }
 
-    }
-    else {
-        if( softbody_constraints.size() >= UINT8_MAX )
-            std::cout << "Unexpected Error: softbody constraint list full." << std::endl;
-        else
-            std::cout << "Could not create softbody constraint for " << joint_name << ": already has another constraint" << std::endl;
-    }
-}
+        // If there is a single child present, use its position for joint length
+        else if(j.children.size() == 1){
+            mat4 tr;
+            vec3 head, tail;
+            glm_mat4_inv(j.tr_inverse_rest, tr);
+            glm_mat4_mulv3(tr, head, 1, head);
+            glm_mat4_inv(joints[j.children[0]].tr_inverse_rest, tr);
+            glm_mat4_mulv3(tr, tail, 1 , tail);
+            sb.settings.joint_length = glm_vec3_distance(head, tail);
+        }
 
-void Armature::update_softbody_positions( SoftbodyConstraint &j ) {
-    SoftbodyConstraint *p = j.parent_joint != 0 ? &softbody_constraints[joints[j.parent_joint].constraint_id] : nullptr;
+        // Place into the constraint list
+        constraints.push_back(std::make_unique<ConstraintSoftbody>(sb));
 
-    // Load the head position from parent tail
-    vec3 head;
-    if( p ) {
-        glm_vec3_copy( p->tail_pos, head );
-    }
-    else {
-        glm_vec3_copy( joints[j.joint].transform[3], head );
-    }
-
-    vec3 abs_vel, local_vel = GLM_VEC3_ZERO_INIT;
-    glm_vec3_sub( j.tail_pos, j.last_tail_pos, abs_vel );
-    glm_vec3_sub( abs_vel, head, local_vel );
-    glm_vec3_add( local_vel, j.last_anim_pos, local_vel );
-    glm_vec3_copy( head, j.last_anim_pos );
-    glm_vec3_sub( abs_vel, local_vel, abs_vel );
-
-    // Save position before it is overwritten
-    glm_vec3_copy( j.tail_pos, j.last_tail_pos );
-
-    vec3 grav = {0, -j.gravity, 0};
-
-    // Update tail position
-    j.tail_pos[0] += (( 1 - j.drag) * abs_vel[0] + ( 1 - j.friction) * local_vel[0]) + grav[0] * constraint_timestep * constraint_timestep;
-    j.tail_pos[1] += (( 1 - j.drag) * abs_vel[1] + ( 1 - j.friction) * local_vel[1]) + grav[1] * constraint_timestep * constraint_timestep;
-    j.tail_pos[2] += (( 1 - j.drag) * abs_vel[2] + ( 1 - j.friction) * local_vel[2]) + grav[2] * constraint_timestep * constraint_timestep;
-
-    // Length elasticity
-    vec3 ideal_tail_pos;
-    glm_vec3_sub( j.tail_pos, head, ideal_tail_pos );
-    glm_vec3_scale( ideal_tail_pos, j.joint_length / ( glm_vec3_norm( ideal_tail_pos ) + GLM_FLT_EPSILON ), ideal_tail_pos );
-    glm_vec3_add( ideal_tail_pos, head, ideal_tail_pos );
-
-    glm_vec3_sub( ideal_tail_pos, j.tail_pos, ideal_tail_pos );
-    glm_vec3_scale( ideal_tail_pos, j.elasticity, ideal_tail_pos );
-    glm_vec3_add(j.tail_pos, ideal_tail_pos, j.tail_pos);
-
-    // Restoration using rigidity
-    ideal_tail_pos[0] =  0;
-    ideal_tail_pos[1] =  j.joint_length;
-    ideal_tail_pos[2] =  0;
-    glm_mat4_mulv3( joints[j.joint].transform, ideal_tail_pos, 1, ideal_tail_pos );
-
-    glm_vec3_sub( ideal_tail_pos, j.tail_pos, ideal_tail_pos );
-    glm_vec3_scale( ideal_tail_pos, j.rigidity, ideal_tail_pos );
-    glm_vec3_add(j.tail_pos, ideal_tail_pos, j.tail_pos);
-}
-
-void Armature::apply_softbody( SoftbodyConstraint &j ) {
-    // Align each joint to its virtual jiggle point and translate to head
-    versor required_rot, forward = {0, 1, 0}, to_jiggle; // xyz -> yzx
-    vec3 head;
-    if( j.parent_joint != 0 ) {
-        glm_vec3_copy( softbody_constraints[joints[j.parent_joint].constraint_id].tail_pos, head );
-    }
-    else {
-        glm_vec3_copy( joints[j.joint].transform[3], head );
-    }
-
-    // Find required world space rotation from current joint transform to jiggle
-    glm_mat4_mulv3( joints[j.joint].transform, forward, 0, forward );
-    glm_vec3_sub( j.tail_pos, head, to_jiggle );
-    glm_vec3_normalize( forward );
-    glm_vec3_normalize( to_jiggle );
-    glm_quat_from_vecs( forward, to_jiggle, required_rot );
-
-    // Append world-space rotation as a pre-transformation
-    mat4 m;
-    glm_quat_mat4( required_rot, m );
-    glm_vec3_zero( joints[j.joint].transform[3] );
-    glm_mat4_mul( m, joints[j.joint].transform, joints[j.joint].transform );
-    glm_vec3_copy( head, joints[j.joint].transform[3] );
-}
-
-// ARMATURE INFO
-Animation *ArmatureInfo::get_animation( string &name ) {
-    try {
-        return &animations[animation_names.at( name )];
-    }
-    catch( std::out_of_range &ex ) {
-        return nullptr;
+        // Link the child to the new constraint (if present)
+        if(child_constraint){
+            ((ConstraintSoftbody*)constraints[child_constraint].get())->parent_softbody = (ConstraintSoftbody*)constraints.back().get();
+        }
     }
 }
 
-uint8_t ArmatureInfo::get_anim_id( string &name ) {
-    try {
-        return animation_names.at( name );
-    }
-    catch( std::out_of_range &ex ) {
-        return 0;
-    }
-}
+/*
+ * Armature Info
+ */
 
-uint8_t ArmatureInfo::get_joint( string &name ) {
-    try {
-        return joint_names.at( name );
-    }
-    catch( std::out_of_range &ex ) {
-        return 0;
-    }
-}
-
-bool ArmatureInfo::load( string filename ) {
-    string filepath = (std::string)DIR_ARMATURES + filename + ".arm";
+bool ArmatureInfo::load( const std::string &filename ) {
+    std::string filepath = ( std::string )DIR_ARMATURES + filename + ".arm";
     std::ifstream filereader;
     filereader.open( filepath, std::ios::out | std::ios::binary );
+
     if( !filereader ) {
         std::cout << "Unable to read armature file: " << filepath << std::endl;
         return false;
     }
 
     // Clear old data
+    armature = Armature();
     armature.info = this;
-    armature.joints.clear();
-    delete[] armature.transform_buffer;
-    armature.transform_buffer = nullptr;
     joint_names.clear();
     animation_names.clear();
     animations.clear();
@@ -507,20 +470,21 @@ bool ArmatureInfo::load( string filename ) {
     // Read number of joints
     uint8_t joint_count, name_length, children_count;
     filereader.read( reinterpret_cast<char *>( &joint_count ), 1 );
+
     if( joint_count > ARMATURE_MAX_JOINTS ) {
         std::cout << "Warning, number of joints " << ( int )joint_count << " exceeds maximum " << ARMATURE_MAX_JOINTS << std::endl;
     }
+
     char buffer[256];
-    string joint_name;
 
     // Joints
     for( uint8_t i = 0; i < joint_count; ++i ) {
-        Armature::Joint joint;
+        Joint joint;
 
         // Name
         filereader.read( reinterpret_cast<char *>( &name_length ), 1 );
         filereader.read( buffer, name_length );
-        joint_name.assign( buffer, name_length );
+        joint.name.assign( buffer, name_length );
 
         // Parent
         filereader.read( reinterpret_cast<char *>( &joint.parent ), 1 );
@@ -531,23 +495,23 @@ bool ArmatureInfo::load( string filename ) {
         joint.children.assign( buffer, buffer + children_count );
 
         // Position and Rotation
-        filereader.read( reinterpret_cast<char *>( joint.local_pos ), 12 );
-        filereader.read( reinterpret_cast<char *>( joint.local_rot ), 16 );
+        filereader.read( reinterpret_cast<char *>( joint.pos ), 12 );
+        filereader.read( reinterpret_cast<char *>( joint.rot ), 16 );
 
         // Add to armature
         if( armature.joints.size() < ARMATURE_MAX_JOINTS ) {
             armature.joints.push_back( joint );
-            joint_names[joint_name] = armature.joints.size() - 1;
+            joint_names[joint.name] = armature.joints.size() - 1;
         }
     }
 
-    armature.transform_buffer = new mat4[armature.joints.size()];
+    armature.transform_buffer = std::unique_ptr<mat4>(new mat4[armature.joints.size()]);
 
     // Animations
     uint8_t animation_count, channel_count;
     uint32_t poskey_count, rotkey_count;
     filereader.read( reinterpret_cast<char *>( &animation_count ), 1 );
-    printf("animcount:%d\n", animation_count);
+    printf( "animcount:%d\n", animation_count );
 
     for( uint8_t i = 0; i < animation_count; ++i ) {
         Animation animation;
@@ -565,7 +529,7 @@ bool ArmatureInfo::load( string filename ) {
         filereader.read( reinterpret_cast<char *>( &channel_count ), 1 );
 
         for( uint8_t j = 0; j < channel_count; ++j ) {
-            Animation::Channel channel;
+            AnimChannel channel;
 
             // Joint
             filereader.read( reinterpret_cast<char *>( &channel.joint ), 1 );
@@ -576,16 +540,18 @@ bool ArmatureInfo::load( string filename ) {
 
             // Position
             channel.positions.resize( poskey_count );
+
             for( unsigned int k = 0; k < poskey_count; ++k ) {
                 filereader.read( reinterpret_cast<char *>( &channel.positions[k].t ), 4 );
-                filereader.read( reinterpret_cast<char *>( &channel.positions[k].v ), 12 );
+                filereader.read( reinterpret_cast<char *>( &channel.positions[k].pos ), 12 );
             }
 
             // Rotation
             channel.rotations.resize( rotkey_count );
+
             for( unsigned int k = 0; k < rotkey_count; ++k ) {
                 filereader.read( reinterpret_cast<char *>( &channel.rotations[k].t ), 4 );
-                filereader.read( reinterpret_cast<char *>( &channel.rotations[k].v ), 16 );
+                filereader.read( reinterpret_cast<char *>( &channel.rotations[k].rot ), 16 );
             }
 
             animation.channels.push_back( channel );
@@ -598,43 +564,7 @@ bool ArmatureInfo::load( string filename ) {
     filereader.close();
 
     // Construct armature rest transforms
-    armature.assign_as_rest();
+    armature.assign_rest();
 
     return true;
-}
-
-// PRINT
-void Animation::Channel::print() const {
-    printf( "\njoint: %u", joint );
-    if( positions.size() > 0 ) {
-        printf( "\npositions: " );
-        for( const PosKey &key : positions ) {
-            printf( " { [%.2f] %.2f %.2f %.2f }", key.t, key.v[0], key.v[1], key.v[2] );
-        }
-    }
-    if( rotations.size() > 0 ) {
-
-        printf( "\nrotations:" );
-        for( const RotKey &key : rotations ) {
-            printf( " { [%.2f] %.2f %.2f %.2f %.2f }", key.t, key.v[0], key.v[1], key.v[2], key.v[3] );
-        }
-    }
-}
-
-void Animation::print() const {
-    printf( "Animation: %s", name.c_str() );
-    for( const Channel &c : channels )
-        c.print();
-}
-
-void Armature::print() const {
-    uint8_t id = 0;
-    for( const Joint &j : joints ) {
-        printf( "Joint: %u parent: %u children: ", id, j.parent );
-        for( uint8_t c : j.children ) {
-            printf( "%u ", c );
-        }
-        printf( "\n" );
-        ++id;
-    }
 }

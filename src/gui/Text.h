@@ -25,7 +25,6 @@ class Text {
 
         Text();
         virtual ~Text();
-        // Text(Text &a);
 
         uint32_t spacing = 20;
         bool needsGenerated = false;

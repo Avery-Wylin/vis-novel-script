@@ -27,16 +27,6 @@ namespace VNOP {
 
         operation_map["armature pose"] = armature_pose;
         format_map[armature_pose]={"armature pose -object -animation -time"};
-
-        /*
-         *NOTE armatures need rewritten
-         * Currently armatures layer animations by play order and do not reset when done
-         * The last played animation overrides all others, only the saved joints are written (unless exported otherwise)
-         * Animations should support blending like add, weighted, or override which changes how they are applied
-         * Posing should be directly integrated as well allowing for poses to be made between animations
-         * Keyframes should follow the Keyframe type defined in the VNAssetManager allowing for fun interpolation types
-         */
-
     }
 };
 

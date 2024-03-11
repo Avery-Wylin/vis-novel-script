@@ -127,7 +127,7 @@ std::string const& Text::get_text(){
     return text;
 }
 
-std::regex color_regex = std::regex(R"((#[0-9a-fA-F]{8})(.*$))");
+std::regex color_regex = std::regex(R"((#[0-9a-fA-F]{6})(.*$))");
 
 void Text::generate(FontInfo &font){
     if(!needsGenerated)
@@ -148,7 +148,8 @@ void Text::generate(FontInfo &font){
     bool isSelected;
     
     float x1,y1,x2,y2, u1,v1,u2,v2;
-    uint32_t text_color = 0x00000000;
+    // The opacity is set as 50%, but the shader may change that
+    uint32_t text_color = 0x0000007F;
     
     GlyphInfo g;
     vertexCount = 0;
@@ -170,33 +171,23 @@ void Text::generate(FontInfo &font){
 
         // Color code
         if( c == '#' ) {
+            // Unset the text color using ##
+            if(i<text.length()-1 && text[i+1] == '#'){
+                text_color = 0;
+                i += 1;
+                continue;
+            }
             if( std::regex_match( text.substr( i, text.size()-i ), color_regex ) ) {
-                // Colors are stored 4 8-bit channels RGBA
+                // Colors are stored 4 8-bit channels RGB
 
                 // Little Endian stuff ???
                 uint8_t buffer[4];
                 buffer[0] = ( uint8_t )std::strtoul( text.substr( i + 1, 2 ).c_str(), NULL, 16 );
                 buffer[1] = ( uint8_t )std::strtoul( text.substr( i + 3, 2 ).c_str(), NULL, 16 );
                 buffer[2] = ( uint8_t )std::strtoul( text.substr( i + 5, 2 ).c_str(), NULL, 16 );
-                buffer[3] = ( uint8_t )std::strtoul( text.substr( i + 7, 2 ).c_str(), NULL, 16 );
+                buffer[3] = 0x7f;
                 text_color = *( ( uint32_t * )buffer );
-                i += 8;
-                continue;
-            }
-        }
-
-
-        // Escape Function symbols using '\'
-        // This will skip to the next symbol without parsing it
-        if( c == '\\' ){
-            if(i<text.size()-1){
-                switch(text[i+1]){
-                    case '#': ++i; break;
-                    case 't': c = '\t'; ++i; break;
-                    case 'n': c = '\n'; ++i; break;
-                }
-            }
-            else{
+                i += 6;
                 continue;
             }
         }

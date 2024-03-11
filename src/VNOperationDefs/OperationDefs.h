@@ -199,6 +199,8 @@ namespace VNOP {
     str_matches,
     str_replace,
     str_compose,
+    str_from,
+    str_newline,
 
     // view
     view_get,

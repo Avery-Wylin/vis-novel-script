@@ -30,6 +30,7 @@ sources = files(
 'graphics/Texture.cpp',
 'graphics/FBO.cpp',
 'graphics/Armature.cpp',
+'graphics/ArmatureConstraints.cpp',
 'graphics/Mesh.cpp',
 'graphics/DebugDraw.cpp',
 

@@ -22,12 +22,12 @@ namespace VNAssets {
     std::vector<ImageContainer> images;
     std::vector<ObjectInstance> objects;
 
-    unordered_map<std::string, uint32_t> shader_names;
-    unordered_map<std::string, uint32_t> model_names;
-    unordered_map<std::string, uint32_t> image_names;
-    unordered_map<std::string, uint32_t> object_names;
+    std::unordered_map<std::string, uint32_t> shader_names;
+    std::unordered_map<std::string, uint32_t> model_names;
+    std::unordered_map<std::string, uint32_t> image_names;
+    std::unordered_map<std::string, uint32_t> object_names;
 
-    unordered_map<std::string, ArmatureInfo> armature_infos;
+    std::unordered_map<std::string, ArmatureInfo> armature_infos;
 
 
     void init(){
@@ -240,6 +240,66 @@ namespace VNAssets {
         images[i_id].objects.push_back( o_id );
         objects[o_id].owner_type = ObjectInstance::OWNER_IMG;
         objects[o_id].owner = i_id;
+        return true;
+    }
+
+    bool parent_object(const std::string& child, const std::string& parent){
+        uint32_t  c_id, p_id;
+        try{
+            c_id = object_names.at(child);
+            p_id = object_names.at(parent);
+        }
+        catch(std::out_of_range &oor){
+            return false;
+        }
+
+        // Do not reparent
+        if(objects[c_id].parent == p_id)
+            return true;
+
+        // If there is an old parent, remove it
+        if(objects[c_id].parent != 0){
+            std::vector<uint32_t> &children = objects[objects[c_id].parent].children;
+            children.erase( std::remove( children.begin(), children.end(), c_id ) );
+        }
+
+        // Link parent and child, remove joint parenting
+        objects[c_id].parent = p_id;
+        objects[c_id].parent_joint = 0;
+        objects[p_id].children.push_back(c_id);
+        return true;
+    }
+
+    // TODO armature needs a way to access joint by name
+    bool parent_joint(const std::string& child, const std::string& parent, const std::string& joint){
+        uint32_t  c_id, p_id;
+        uint8_t j_id = 0;
+        try{
+            c_id = object_names.at(child);
+            p_id = object_names.at(parent);
+        }
+        catch(std::out_of_range &oor){
+            return false;
+        }
+
+        // No joint to parent to
+        if(j_id == 0)
+            return false;
+
+        // Do not reparent
+        if(objects[c_id].parent == p_id && objects[c_id].parent_joint == j_id )
+            return true;
+
+        // If there is an old parent, remove it
+        if(objects[c_id].parent != 0){
+            std::vector<uint32_t> &children = objects[objects[c_id].parent].children;
+            children.erase( std::remove( children.begin(), children.end(), c_id ) );
+        }
+
+        // Link parent and child, remove joint parenting
+        objects[c_id].parent = p_id;
+        objects[c_id].parent_joint = 0;
+        objects[p_id].children.push_back(c_id);
         return true;
     }
 
