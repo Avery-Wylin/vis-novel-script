@@ -2,6 +2,7 @@
 #define VNASSETMANAGER_H
 #include <unordered_map>
 #include <vector>
+#include <set>
 #include "Mesh.h"
 #include "VAO.h"
 #include "Shader.h"
@@ -104,101 +105,114 @@ struct KeyframeFloat{
 };
 
 struct ObjectInstance {
-    static const uint8_t
-    OWNER_NULL = 0,
-    OWNER_MODEL = 1,
-    OWNER_IMG = 2;
 
-    uint8_t owner_type = OWNER_NULL;
     bool enabled = true;
     bool updated = false;
-    uint32_t owner = 0;
-
+    uint32_t shader = 0, model = 0, parent = 0;
+    std::vector<uint32_t> children;
+    uint8_t parent_joint = 0;
 
     Armature armature;
-    uint32_t parent = 0;
-    uint8_t parent_joint = 0;
-    std::vector<uint32_t> children;
     vec3 position = GLM_VEC3_ZERO_INIT;
-    versor rotation = GLM_VEC3_ZERO_INIT;
+    vec3 tex_id = GLM_VEC3_ZERO_INIT;
+    versor rotation = GLM_QUAT_IDENTITY_INIT;
+    mat4 transform = GLM_MAT4_IDENTITY_INIT;
     float scale = 1;
 
     KeyframePos key_position;
     KeyframeRot key_rotation;
     KeyframeFloat key_scale;
+    KeyframeFloat key_texture_mix;
 
     void update(float t);
-
 };
 
 struct ModelContainer {
-    uint32_t shader_id = 0;
     Mesh mesh;
     std::shared_ptr<VAO> vao;
-    std::vector<uint32_t> objects;
-    void draw();
+    std::shared_ptr<TextureArray> image_array;
+    std::vector<std::string> image_names;
+
+    bool image_changed = false;
 
     ModelContainer(){
         vao = std::shared_ptr<VAO>(new VAO());
-    }
-};
+        image_array = std::shared_ptr<TextureArray>(new TextureArray());
 
-// Image containers use a special shader and a quad to draw
-struct ImageContainer {
-    string filename;
-    std::shared_ptr<Texture> image;
-    std::vector<uint32_t> objects;
-    bool needs_loaded = false;
-    void draw();
-
-    ImageContainer(){
-        image = std::shared_ptr<Texture>(new Texture());
+        // Load a default model (a simple square, good for images)
+        float pos_vals[] = {-.5,-.5, .5,-.5, .5,.5, -.5,.5};
+        float uv_vals[] = {0,1, 1,1, 1,0, 0,0};
+        uint32_t index[] = {0,1,2, 0,2,3};
+        vao->load_attrb_float(ATTRB_POS, 0, 0, 2, 8, pos_vals );
+        vao->load_attrb_float(ATTRB_UV, 0, 0, 2, 8, uv_vals );
+        vao->load_index(6, index);
     }
 };
 
 
 struct ShaderContainer {
     std::shared_ptr<Shader> shader;
-    std::shared_ptr<Texture> texture;
     std::string filename;
     bool needs_compiled = false;
-    std::vector<uint32_t> models;
-    void draw();
+    bool blend = false;
+    bool cull = true;
+    bool depth_test = true;
 
     ShaderContainer(){
         shader = std::shared_ptr<Shader>(new Shader());
-        texture = std::shared_ptr<Texture>(new Texture());
     }
 };
+
+bool compare_objects(uint32_t a, uint32_t b);
+
+struct Scene {
+    // Use a sorted set, objects are sorted by shader and model
+    std::set<uint32_t,  bool(*)(uint32_t,uint32_t)> objects = std::set<uint32_t,  bool(*)(uint32_t,uint32_t)>(compare_objects);
+
+    void add_object( uint32_t id );
+    void remove_object( uint32_t id);
+    void update( float t );
+    void draw();
+};
+
 
 // Assets are ordered in a certain hierarchy
 // Shaders are at the top and contain a list of models
 // Models contain a mesh and a list of objects
+
 namespace VNAssets {
+
     extern View view;
     extern KeyframeFloat key_fov;
     extern KeyframePos key_pos;
     extern KeyframePos key_focus;
     extern vec3 focus;
-    extern Shader image_shader;
-    extern VAO image_vao;
+    extern Scene *active_scene;
 
 
     ShaderContainer *get_shader( const std::string& name );
+    ShaderContainer *get_shader( uint32_t id );
     ModelContainer *get_model( const std::string& name );
-    ImageContainer *get_image( const std::string& name );
+    ModelContainer *get_model( uint32_t id );
     ObjectInstance *get_object( const std::string& name );
+    ShaderContainer *null_shader();
+    ModelContainer *null_model();
+    ObjectInstance *null_object();
     ArmatureInfo *get_armature_info( const std::string& name );
+
+    void scene_create(const std::string& name);
+    void scene_delete(const std::string& name);
+    bool scene_select(const std::string& name);
+    bool scene_add(const std::string& object);
+    bool scene_remove(const std::string& object);
 
     ShaderContainer* create_shader(const std::string& name);
     ModelContainer* create_model(const std::string& name);
-    ImageContainer* create_image(const std::string& name);
     ObjectInstance* create_object(const std::string& name);
     ArmatureInfo* load_armature(const std::string& name, const std::string &filename);
 
-    bool link_model_to_shader(const std::string& model, const std::string& shader);
-    bool link_object_to_model(const std::string& object, const std::string& model);
-    bool link_object_to_image(const std::string& object, const std::string& image);
+
+    bool unparent(const std::string &object);
     bool parent_object(const std::string& child, const std::string& parent);
     bool parent_joint(const std::string& child, const std::string& parent, const std::string& joint);
 

@@ -63,7 +63,7 @@ sources = files(
 'VNOperationDefs/OperationsDialogue.cpp',
 'VNOperationDefs/OperationsControl.cpp',
 'VNOperationDefs/OperationsGUI.cpp',
-'VNOperationDefs/OperationsImage.cpp',
+'VNOperationDefs/OperationsScene.cpp',
 'VNOperationDefs/OperationsModel.cpp',
 'VNOperationDefs/OperationsObject.cpp',
 'VNOperationDefs/OperationsShader.cpp',

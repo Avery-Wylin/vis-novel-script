@@ -2,6 +2,7 @@
 
 in vec3 uv_f;
 in vec2 pos_f;
+in vec4 col_f;
 in float char_num;
 
 out vec4 color_out;
@@ -17,6 +18,11 @@ void main(void){
     if(v < 0.5 || char_num > factor){
         discard;
     }
-    color_out.rgb = uv_f.z==0?object_color:object_color2 ;
+
+    // mix color using alpha
+    color_out.rgb = mix(object_color, col_f.rgb, col_f.a);
+
+    // If selected (z!=0) then override color
+    color_out.rgb = uv_f.z==0?color_out.rgb:object_color2 ;
     color_out.a = 1;
 }

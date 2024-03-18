@@ -112,7 +112,6 @@ class Armature {
     friend Animation;
 
     ArmatureInfo *info = nullptr;
-    std::vector<Joint> joints;
     std::vector<std::unique_ptr<Constraint>> constraints;
 
     // Applies all playing animations
@@ -120,11 +119,15 @@ class Armature {
 
 public:
 
+    // This is used for constraints, this does NOT change the actual scale
+    float scale_constraint = 1;
+
     Armature(){
         // Add the null constraint since the default constraint id is 0
         constraints.push_back(std::unique_ptr<Constraint>(new Constraint()));
     }
 
+    std::vector<Joint> joints;
     std::unique_ptr<mat4> transform_buffer = nullptr;
     std::vector<PlayData> play_data;
 
@@ -157,12 +160,14 @@ public:
 
     // Add a softbody constraint (can't be removed)
     void constraint_softbody(uint8_t joint_id, SoftbodySettings settings);
+    void constraint_track(uint8_t joint_id, vec3 focus, uint8_t axis, bool negate);
 
     // Must be initialized, otherwise will crash
     inline Joint& get_root(){return joints[0];}
     inline Joint& get_joint(uint8_t joint_id){return joints[joint_id];}
     inline ArmatureInfo* get_info() const{ return info; }
     inline bool empty(){return !transform_buffer || !info || joints.empty();}
+    inline Constraint* get_constraint(uint8_t id){ if( id == 0 || id >= constraints.size())return nullptr;return constraints[id].get();}
 
 
 };

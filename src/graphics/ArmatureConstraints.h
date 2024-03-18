@@ -22,18 +22,18 @@ struct Constraint{
     Constraint(){}
     virtual ~Constraint(){}
 
-    virtual void update(Joint &j){}
-    virtual void apply(Joint &j){}
+    virtual void update(Joint &j, Armature& arm){}
+    virtual void apply(Joint &j, Armature& arm){}
     inline virtual std::unique_ptr<Constraint> get_copy(){return std::unique_ptr<Constraint>(new Constraint());}
 };
 
-const static float timestep = 0.05f;
+const static float timestep = 0.02f;
 const static float timestep_sqr = timestep * timestep;
 
 struct SoftbodySettings{
     float elasticity = 0.7;
     float drag = 0.8;
-    float momentum = 0.4;
+    float friction = 0.4;
     float rigidity = 0.3;
     float gravity = 1;
     float joint_length = 0.1;
@@ -54,8 +54,21 @@ struct ConstraintSoftbody : public Constraint{
     uint8_t parent_joint = 0;
     uint8_t child_joint = 0;
 
-    virtual void update(Joint &j) override;
-    virtual void apply(Joint &j) override;
+    virtual void update(Joint &j, Armature& arm) override;
+    virtual void apply(Joint &j, Armature& arm) override;
+    virtual std::unique_ptr<Constraint> get_copy() override;
+};
+
+struct ConstraintTrack : public Constraint{
+    ConstraintTrack(){type = TRACK;}
+    virtual ~ConstraintTrack(){}
+
+    vec3 focus = GLM_VEC3_ZERO_INIT;
+    uint8_t fx = 0;
+    bool neg = false;
+
+    virtual void update(Joint &j, Armature& arm) override;
+    virtual void apply(Joint &j, Armature& arm) override;
     virtual std::unique_ptr<Constraint> get_copy() override;
 };
 

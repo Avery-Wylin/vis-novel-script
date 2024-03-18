@@ -22,16 +22,13 @@ enum Attribute : uint8_t {
 enum Uniform : uint8_t {
     UNIFORM_TRANSFORM,   // mat4 Local transform
     UNIFORM_CAMERA,      // mat4 Camera transform (usually inverted and combined with perspective)
-    UNIFORM_PROJ,       // mat4 camera projection only
+    UNIFORM_PROJ,        // mat4 camera projection only
     UNIFORM_CAM_POS,     // vec3 Camera position (useful for incoming vector)
     UNIFORM_COLOR,       // 3f color of object
     UNIFORM_COLOR2,      // 3f color of object
+    UNIFORM_TEXID,       // The texture to select from a texture array
+    UNIFORM_TEXDIM,      // The texture dimensions
     UNIFORM_FACTOR,      // f any given factor
-    UNIFORM_ZENITH,      // 3f color of environment looking up
-    UNIFORM_HORIZON,     // 3f color of the environment and fog
-    UNIFORM_SUN,         // 3f color of the environment looking down
-    UNIFORM_SUN_DIR,     // 3f color of the environment looking down
-    UNIFORM_FOG,         // 2f fog settings multiplier & exponent
     UNIFORM_JOINTS,      // mat4[] list of joint transforms
     NUM_UNIFORMS         // Last enum, number of existing uniforms
 };

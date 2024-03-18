@@ -60,11 +60,13 @@ void  MenuBase::update(){
 
     // Routines may add/remove elements, only one routine can be called per-update
     // This will remove the need to iterate over a changing list
+    bool performed_routine = false;
     for(Element *e : element_set.get_elements()){
-        if(e->changed()){
-            if(e->has_routine)
+        if(e->changed() && e == element_set.get_selection()){
+            if(!performed_routine && e->has_routine){
                 element_interpreter.start_routine(e->routine_file,e->routine_label);
-            return;
+                performed_routine = true;
+            }
         }
     }
 }

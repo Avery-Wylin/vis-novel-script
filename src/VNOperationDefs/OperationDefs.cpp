@@ -16,7 +16,7 @@ namespace VNOP{
         load_ops_character();
         load_ops_control();
         load_ops_gui();
-        load_ops_image();
+        load_ops_scene();
         load_ops_model();
         load_ops_object();
         load_ops_shader();

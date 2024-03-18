@@ -62,7 +62,7 @@ namespace VNOP {
     void load_ops_character();
     void load_ops_control();
     void load_ops_gui();
-    void load_ops_image();
+    void load_ops_scene();
     void load_ops_model();
     void load_ops_object();
     void load_ops_shader();
@@ -112,6 +112,7 @@ namespace VNOP {
     armature_load,
     armature_create,
     armature_softbody,
+    armature_track,
     armature_playing,
     armature_play,
     armature_stop,
@@ -159,34 +160,39 @@ namespace VNOP {
     element_position,
     element_routine,
 
-    // image
-    image_create,
-    image_load,
+    // scene
+    scene_create,
+    scene_delete,
+    scene_select,
+    scene_add,
+    scene_remove,
 
-    // modle
+    // model
     model_create,
     model_clear,
     model_load,
     model_append,
     model_mix,
     model_copy,
-    model_shader,
+    model_images,
 
     // object
     object_create,
     object_model,
-    object_image,
+    object_shader,
     object_set,
     object_get,
     object_translate,
     object_rotate,
     object_scale,
+    object_imgsel,
     object_animate,
+    object_parent,
 
     // shader
     shader_create,
     shader_load,
-    shader_image,
+    shader_setting,
 
     // string
     str_concat,

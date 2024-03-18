@@ -7,12 +7,26 @@ namespace VNOP {
 
     void load_ops_model() {
         operation_map["model create"] = model_create;
+        format_map[model_create] = {"model create -name"};
+
         operation_map["model clear"] = model_clear;
+        format_map[model_clear] = {"model clear -name"};
+
         operation_map["model load"] = model_load;
+        format_map[model_load] = {"model load -name -filename"};
+
         operation_map["model append"] = model_append;
+        format_map[model_append] = {"model append -name -appended"};
+
         operation_map["model mix"] = model_mix;
+        format_map[model_mix] = {"model mix -name -a -b ( pos norm col uv ) -factor"};
+
         operation_map["model copy"] = model_copy;
-        operation_map["model shader"] = model_shader;
+        format_map[model_copy] = {"model copy -from -to"};
+
+        operation_map["model images"] = model_images;
+        format_map[model_images] = {"model images -name | images..."};
+
     }
 }
 
@@ -106,7 +120,7 @@ void VNOP::model_copy( func_args ) {
     exact_args( 2 )
     ModelContainer *src = nullptr, *dest = nullptr;
     src = VNAssets::get_model( args[0].value_string() );
-    src = VNAssets::get_model( args[1].value_string() );
+    dest = VNAssets::get_model( args[1].value_string() );
     if(!src){
         VNDebug::runtime_error("Source model not defined",args[0].value_string(),vni);
         return;
@@ -121,8 +135,19 @@ void VNOP::model_copy( func_args ) {
     dest->mesh.append_mesh( src->mesh );
 }
 
-// model shader <name> <shader>
-void VNOP::model_shader( func_args ) {
-    exact_args( 2 )
-    VNAssets::link_model_to_shader( args[0].value_string(), args[1].value_string() );
+// model images -name | images...
+void VNOP::model_images( func_args ) {
+    ModelContainer *model = VNAssets::get_model( args[0].value_string() );
+
+    if( !model ){
+        VNDebug::runtime_error("Model not defined", args[0].value_string(), vni);
+        return;
+    }
+
+    // This must be done on the thread containing the GL Context
+    model->image_names.clear();
+    for(uint8_t i = 1; i < args.size(); ++i){
+        model->image_names.push_back(args[i].value_string());
+    }
+    model->image_changed = true;
 }

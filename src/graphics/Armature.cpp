@@ -18,6 +18,10 @@ void AnimChannel::value_pos(float t, vec3 v){
         glm_vec3_copy(positions.back().pos, v);
         return;
     }
+    else if(t <= 0 ){
+        glm_vec3_copy(positions.front().pos,v);
+        return;
+    }
 
     // Find the first key that exceeds the time sought
     for(uint16_t i = 0; i < positions.size(); ++i){
@@ -47,6 +51,10 @@ void AnimChannel::value_rot(float t, versor v){
     // Quick check out of range
     if(t > rotations.back().t){
         glm_quat_copy(rotations.back().rot, v);
+        return;
+    }
+    else if(t <= 0 ){
+        glm_quat_copy(rotations.front().rot, v);
         return;
     }
 
@@ -147,7 +155,7 @@ void Armature::update(float t){
     // Update all animations
     update_animations(t);
 
-    // Root is ignored, root is set elsewhere
+    // Ignore root so it can be transformed by external functions
     for(uint8_t i = 1; i < joints.size(); ++i){
         Joint &j = joints[i];
 
@@ -160,13 +168,13 @@ void Armature::update(float t){
 
         // Apply constraints (if present)
         if(j.constraint_id != 0){
-            constraints[j.constraint_id]->update(j);
-            constraints[j.constraint_id]->apply(j);
+            constraints[j.constraint_id]->update(j, *this);
+            constraints[j.constraint_id]->apply(j, *this);
         }
     }
 
-    // Place into the transform buffer relative to the inverse transform (ignore root, it is not needed)
-    for(uint8_t i = 1; i < joints.size(); ++i){
+    // Place into the transform buffer relative to the inverse transform
+    for(uint8_t i = 0; i < joints.size(); ++i){
         glm_mat4_mul(joints[i].tr, joints[i].tr_inverse_rest, ((mat4*)transform_buffer.get())[i] );
     }
 }
@@ -180,8 +188,10 @@ void Armature::copy(Armature &dest){
     if(empty())
         return;
 
+    dest.info = info;
+
     // Reallocate transform buffer and copy data
-    transform_buffer = std::unique_ptr<mat4>(new mat4[joints.size()]);
+    dest.transform_buffer = std::unique_ptr<mat4>(new mat4[joints.size()]);
     memcpy(dest.transform_buffer.get(), transform_buffer.get(), joints.size()*sizeof(mat4));
 
     // Delete all constraints
@@ -214,7 +224,7 @@ void Armature::play_animation(uint8_t anim, float speed, float start, float stop
         play_data[play_id].blend_factor = blend_factor;
 
         play_data[play_id].start = fmax(0, start);
-        play_data[play_id].stop = fmin(play_data[play_id].stop, info->get_animation(anim).duration);
+        play_data[play_id].stop = fmin(stop, info->get_animation(anim).duration);
         play_data[play_id].start = fmin(play_data[play_id].stop, play_data[play_id].start);
 
         // Update time if overwrite
@@ -234,7 +244,7 @@ void Armature::play_animation(uint8_t anim, float speed, float start, float stop
         pd.blend_factor = blend_factor;
 
         pd.start = fmax(0, start);
-        pd.stop = fmin(pd.stop, info->get_animation(anim).duration);
+        pd.stop = fmin(stop, info->get_animation(anim).duration);
         pd.start = fmin(pd.stop, pd.start);
 
         if(add_bottom)
@@ -304,6 +314,9 @@ void Armature::update_animations(float t){
 
                 case PlayData::BACK:
                     pd.speed *= -1;
+                    pd.end_method = PlayData::END;
+                    break;
+
                 case PlayData::CLAMPED:
                     pd.time = glm_clamp(pd.time, pd.start, pd.stop);
                     break;
@@ -398,11 +411,14 @@ void Armature::constraint_softbody(uint8_t joint_id, SoftbodySettings settings){
                 mat4 tr;
                 vec3 head, tail;
                 glm_mat4_inv(parent.tr_inverse_rest, tr);
-                glm_mat4_mulv3(tr, head, 1, head);
+                glm_vec3_copy(tr[3],head);
                 glm_mat4_inv(j.tr_inverse_rest, tr);
-                glm_mat4_mulv3(tr, tail, 1 , tail);
+                glm_vec3_copy(tr[3],tail);
 
                 ((ConstraintSoftbody*)pc.get())->settings.joint_length = glm_vec3_distance(head, tail);
+
+                printf("%s %f\n", parent.name.c_str(), ((ConstraintSoftbody*)pc.get())->settings.joint_length);
+                fflush(stdout);
             }
         }
 
@@ -419,9 +435,9 @@ void Armature::constraint_softbody(uint8_t joint_id, SoftbodySettings settings){
             mat4 tr;
             vec3 head, tail;
             glm_mat4_inv(j.tr_inverse_rest, tr);
-            glm_mat4_mulv3(tr, head, 1, head);
+            glm_vec3_copy(tr[3],head);
             glm_mat4_inv(joints[child_id].tr_inverse_rest, tr);
-            glm_mat4_mulv3(tr, tail, 1 , tail);
+            glm_vec3_copy(tr[3],tail);
             sb.settings.joint_length = glm_vec3_distance(head, tail);
         }
 
@@ -430,19 +446,46 @@ void Armature::constraint_softbody(uint8_t joint_id, SoftbodySettings settings){
             mat4 tr;
             vec3 head, tail;
             glm_mat4_inv(j.tr_inverse_rest, tr);
-            glm_mat4_mulv3(tr, head, 1, head);
+            glm_vec3_copy(tr[3],head);
             glm_mat4_inv(joints[j.children[0]].tr_inverse_rest, tr);
-            glm_mat4_mulv3(tr, tail, 1 , tail);
+            glm_vec3_copy(tr[3],tail);
             sb.settings.joint_length = glm_vec3_distance(head, tail);
         }
 
         // Place into the constraint list
+        j.constraint_id = constraints.size();
         constraints.push_back(std::make_unique<ConstraintSoftbody>(sb));
 
         // Link the child to the new constraint (if present)
         if(child_constraint){
             ((ConstraintSoftbody*)constraints[child_constraint].get())->parent_softbody = (ConstraintSoftbody*)constraints.back().get();
         }
+    }
+}
+
+void Armature::constraint_track(uint8_t joint_id, vec3 focus, uint8_t axis, bool negate){
+    if(empty())
+        return;
+    Joint &j = joints[joint_id];
+    if(j.constraint_id != 0){
+        if( constraints[j.constraint_id]->type == Constraint::TRACK){
+            glm_vec3_copy(focus, ((ConstraintTrack*)constraints[j.constraint_id].get())->focus);
+            ((ConstraintTrack*)constraints[j.constraint_id].get())->fx = axis;
+            ((ConstraintTrack*)constraints[j.constraint_id].get())->neg = negate;
+        }
+        else{
+            printf("Failed to add track: joint %s already has a constraint\n",j.name.c_str());
+            fflush(stdout);
+            return;
+        }
+    }
+    else{
+        ConstraintTrack c;
+        glm_vec3_copy(focus, c.focus);
+        c.fx = axis;
+        c.neg = negate;
+        j.constraint_id = constraints.size();
+        constraints.push_back(std::make_unique<ConstraintTrack>(c));
     }
 }
 
@@ -465,7 +508,7 @@ bool ArmatureInfo::load( const std::string &filename ) {
     armature.info = this;
     joint_names.clear();
     animation_names.clear();
-    animations.clear();
+    animations = {Animation()};
 
     // Read number of joints
     uint8_t joint_count, name_length, children_count;

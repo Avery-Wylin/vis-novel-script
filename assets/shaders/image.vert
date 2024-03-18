@@ -7,7 +7,7 @@ out vec2 uv_f;
 out vec3 pos_f;
 
 uniform vec3 factor;
-uniform vec3 transform;
+uniform mat4 transform;
 uniform mat4 camera;
 uniform mat4 proj;
 
@@ -18,7 +18,7 @@ void main(void){
 //     uv_f = vec2(pos.x, 1-pos.y);
 
     // Billboard effects
-    vec4 p = camera * vec4(transform,1);
+    vec4 p = camera * vec4(transform[3].xyz,1);
     gl_Position = proj * (p + vec4(pos.x * factor.x*factor.z, pos.y * factor.y*factor.z, 0, 1));
     pos_f = p.xyz;
     uv_f = uv;

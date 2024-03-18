@@ -50,11 +50,8 @@ void Shader::linkDefaultUniforms() {
     uniform_locations[UNIFORM_COLOR] = glGetUniformLocation( program_id, "object_color" );
     uniform_locations[UNIFORM_COLOR2] = glGetUniformLocation( program_id, "object_color2" );
     uniform_locations[UNIFORM_FACTOR] = glGetUniformLocation( program_id, "factor" );
-    uniform_locations[UNIFORM_ZENITH] = glGetUniformLocation( program_id, "zenith" )  ;
-    uniform_locations[UNIFORM_HORIZON] = glGetUniformLocation( program_id, "horizon" ) ;
-    uniform_locations[UNIFORM_SUN] = glGetUniformLocation( program_id, "sun" ) ;
-    uniform_locations[UNIFORM_SUN_DIR] = glGetUniformLocation( program_id, "sun_dir" ) ;
-    uniform_locations[UNIFORM_FOG] = glGetUniformLocation( program_id, "fog_data" ) ;
+    uniform_locations[UNIFORM_TEXID] = glGetUniformLocation( program_id, "tex_id" )  ;
+    uniform_locations[UNIFORM_TEXDIM] = glGetUniformLocation( program_id, "tex_dim" )  ;
     uniform_locations[UNIFORM_JOINTS] = glGetUniformLocation( program_id, "joints" ) ;
 }
 

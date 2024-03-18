@@ -1,5 +1,6 @@
 #include "VNAssetManager.h"
 #include <Audio.h>
+#include <queue>
 
 vec3 x_axis = {1, 0, 0};
 vec3 y_axis = {0, 1, 0};
@@ -14,44 +15,82 @@ namespace VNAssets {
     KeyframePos key_pos;
     KeyframePos key_focus;
     vec3 focus = GLM_VEC3_ZERO_INIT;
-    Shader image_shader;
-    VAO image_vao;
+    Scene *active_scene = nullptr;
+
 
     std::vector<ShaderContainer> shaders;
     std::vector<ModelContainer> models;
-    std::vector<ImageContainer> images;
     std::vector<ObjectInstance> objects;
 
+    std::unordered_map<std::string, Scene> scenes;
     std::unordered_map<std::string, uint32_t> shader_names;
     std::unordered_map<std::string, uint32_t> model_names;
-    std::unordered_map<std::string, uint32_t> image_names;
     std::unordered_map<std::string, uint32_t> object_names;
 
     std::unordered_map<std::string, ArmatureInfo> armature_infos;
 
 
     void init(){
-        // Load the image shader
-        image_shader.load("image");
-        float pos_vals[] = {-.5,-.5, .5,-.5, .5,.5, -.5,.5};
-        float uv_vals[] = {0,1, 1,1, 1,0, 0,0};
-        image_vao.load_attrb_float(ATTRB_POS, 0, 0, 2, 8, pos_vals );
-        image_vao.load_attrb_float(ATTRB_UV, 0, 0, 2, 8, uv_vals );
 
-        // Load a null shader, this is never used
+        // Load null values used as the default
         shaders.push_back(ShaderContainer());
+        models.push_back(ModelContainer());
+        objects.push_back(ObjectInstance());
     }
 
     void close(){
         // Free loaded GL assets
-        image_shader.free();
-        image_vao.free();
         for(ShaderContainer &s:shaders){
             s.shader->free();
         }
         for(ModelContainer &m:models){
             m.vao->free();
         }
+    }
+
+    void scene_create( const std::string &name ) {
+        scenes[name];
+    }
+
+    void scene_delete( const std::string &name ) {
+        scenes.erase(name);
+    }
+
+
+    bool scene_select(const std::string &name){
+        try {
+            active_scene = &scenes.at( name );
+            return true;
+        }
+        catch( std::out_of_range &oor ) {
+            printf( "Scene %s not found\n", name.c_str() );
+            fflush( stdout );
+            return false;
+        }
+    }
+
+    bool scene_add( const std::string &object ) {
+        if(!active_scene)
+            return false;
+
+        ObjectInstance *obj = get_object(object);
+        if(obj){
+            active_scene->add_object(obj - &objects[0]);
+            return true;
+        }
+        return false;
+    }
+
+    bool scene_remove( const std::string &object ) {
+        if(!active_scene)
+            return false;
+
+        ObjectInstance *obj = get_object(object);
+        if(obj){
+            active_scene->remove_object(obj - &objects[0]);
+            return true;
+        }
+        return false;
     }
 
     ModelContainer *get_model( const std::string &name ) {
@@ -66,16 +105,8 @@ namespace VNAssets {
         }
     }
 
-    ImageContainer *get_image( const std::string &name  ) {
-        try {
-            uint32_t id = image_names.at( name );
-            return &images[id];
-        }
-        catch( std::out_of_range &oor ) {
-            printf( "Image %s not found\n", name.c_str() );
-            fflush( stdout );
-            return nullptr;
-        }
+    ModelContainer *get_model( uint32_t id ){
+        return &models[id];
     }
 
     ShaderContainer *get_shader( const std::string &name  ) {
@@ -90,6 +121,11 @@ namespace VNAssets {
         }
     }
 
+    ShaderContainer *get_shader( uint32_t id ) {
+        return &shaders[id];
+    }
+
+
     ObjectInstance *get_object( const std::string &name  ) {
         try {
             uint32_t id = object_names.at( name );
@@ -101,6 +137,19 @@ namespace VNAssets {
             return nullptr;
         }
     }
+
+    ShaderContainer *null_shader(){
+        return &shaders[0];
+    }
+
+    ModelContainer *null_model(){
+        return &models[0];
+    }
+
+    ObjectInstance *null_object(){
+        return &objects[0];
+    }
+
 
 
     ArmatureInfo *get_armature_info( const std::string &name  ) {
@@ -121,14 +170,6 @@ namespace VNAssets {
         shader_names[name] = shaders.size();
         shaders.push_back( ShaderContainer() );
         return &shaders.back();
-    }
-
-    ImageContainer *create_image( const std::string &name  ) {
-        if( image_names.contains( name ) )
-            return &images[image_names[name]];
-
-        image_names[name] = images.size();
-        images.push_back( ImageContainer() );
     }
 
     ModelContainer *create_model( const std::string &name  ) {
@@ -153,94 +194,6 @@ namespace VNAssets {
             return nullptr;
         }
         return &armature_infos[name];
-    }
-
-    bool link_model_to_shader( const std::string &model, const std::string &shader ) {
-        uint32_t m_id, s_id;
-
-        try {
-            m_id = VNAssets::model_names.at( model );
-            s_id = VNAssets::shader_names.at( shader );
-        }
-        catch( std::out_of_range &oor ) {
-            return false;
-        }
-
-        // Treat the default shader as null and do not link
-        if(s_id == 0)
-            return false;
-
-        // Remove old owner if not null
-        uint32_t shader_id = models[m_id].shader_id;
-        if( shader_id != 0 ) {
-            std::vector<uint32_t> &ms = shaders[shader_id].models;
-            ms.erase( std::remove( ms.begin(), ms.end(), m_id ) );
-        }
-
-        // Add new owner
-        shaders[s_id].models.push_back( m_id );
-        models[m_id].shader_id = s_id;
-        return true;
-    }
-
-    bool link_object_to_model( const std::string &object, const std::string &model ) {
-        uint32_t o_id, m_id;
-
-        try {
-            o_id = VNAssets::object_names.at( object );
-            m_id = VNAssets::model_names.at( model );
-        }
-        catch( std::out_of_range &oor ) {
-            return false;
-        }
-
-        // Remove owner if model
-        if( objects[o_id].owner_type == ObjectInstance::OWNER_MODEL) {
-            std::vector<uint32_t> &os = models[objects[o_id].owner].objects;
-            os.erase( std::remove( os.begin(), os.end(), o_id ) );
-        }
-        // Remove owner if image
-        else if( objects[o_id].owner_type == ObjectInstance::OWNER_IMG){
-            std::vector<uint32_t> &os = images[objects[o_id].owner].objects;
-            os.erase( std::remove( os.begin(), os.end(), o_id ) );
-        }
-
-
-        // Add new owner
-        models[m_id].objects.push_back( o_id );
-        objects[o_id].owner_type = ObjectInstance::OWNER_MODEL;
-        objects[o_id].owner = m_id;
-        return true;
-    }
-
-    bool link_object_to_image( const std::string &object, const std::string &image ) {
-        uint32_t o_id, i_id;
-
-        try {
-            o_id = VNAssets::object_names.at( object );
-            i_id = VNAssets::image_names.at( image );
-        }
-        catch( std::out_of_range &oor ) {
-            return false;
-        }
-
-        // Remove owner if model
-        if( objects[o_id].owner_type == ObjectInstance::OWNER_MODEL) {
-            std::vector<uint32_t> &os = models[objects[o_id].owner].objects;
-            os.erase( std::remove( os.begin(), os.end(), o_id ) );
-        }
-        // Remove owner if image
-        else if( objects[o_id].owner_type == ObjectInstance::OWNER_IMG){
-            std::vector<uint32_t> &os = images[objects[o_id].owner].objects;
-            os.erase( std::remove( os.begin(), os.end(), o_id ) );
-        }
-
-
-        // Add new owner
-        images[i_id].objects.push_back( o_id );
-        objects[o_id].owner_type = ObjectInstance::OWNER_IMG;
-        objects[o_id].owner = i_id;
-        return true;
     }
 
     bool parent_object(const std::string& child, const std::string& parent){
@@ -270,7 +223,6 @@ namespace VNAssets {
         return true;
     }
 
-    // TODO armature needs a way to access joint by name
     bool parent_joint(const std::string& child, const std::string& parent, const std::string& joint){
         uint32_t  c_id, p_id;
         uint8_t j_id = 0;
@@ -281,6 +233,14 @@ namespace VNAssets {
         catch(std::out_of_range &oor){
             return false;
         }
+
+        ArmatureInfo *info = objects[p_id].armature.get_info();
+
+        // No armature to get joint
+        if(!info)
+            return false;
+
+        j_id = info->get_joint_id(joint);
 
         // No joint to parent to
         if(j_id == 0)
@@ -298,7 +258,7 @@ namespace VNAssets {
 
         // Link parent and child, remove joint parenting
         objects[c_id].parent = p_id;
-        objects[c_id].parent_joint = 0;
+        objects[c_id].parent_joint = j_id;
         objects[p_id].children.push_back(c_id);
         return true;
     }
@@ -317,174 +277,233 @@ namespace VNAssets {
 
         Audio::set_listener_transform(view);
 
-        // Update object animations
-        for(ObjectInstance &o : objects){
-            o.update(t);
-        }
+        if(active_scene)
+            active_scene->update(t);
 
     }
 
-
-    // This is called by the window thread which contains the GL Context
-    void draw() {
-        view.update();
-
-        // Skip the first null shader
-        for( uint32_t i = 1; i < shaders.size(); ++i ) {
-            shaders[i].draw();
-        }
-
-        // Draw Images
-        glEnable(GL_BLEND);
-        glDisable(GL_CULL_FACE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        Shader::bind(image_shader);
-        Shader::uniformMat4f( UNIFORM_CAMERA, VNAssets::view.getInverseTransform() );
-        Shader::uniformMat4f( UNIFORM_PROJ, VNAssets::view.getPerspective() );
-        Shader::uniformVec3f( UNIFORM_CAM_POS, VNAssets::view.pos );
-        image_vao.bind();
-        for(ImageContainer &img : images){
-            img.draw();
-        }
-
-        glDisable(GL_BLEND);
+    void draw(){
+        if(active_scene)
+            active_scene->draw();
     }
 
 }
 
+bool compare_objects(uint32_t a, uint32_t b){
+    ObjectInstance &ao = VNAssets::objects[a], &bo =  VNAssets::objects[b];
+
+    if(ao.shader < bo.shader)
+            return true;
+        else if (ao.shader == bo.shader)
+            if(ao.model < bo.model)
+                return true;
+            else
+                return a < b;
+        else
+            return false;
+}
+
+// Updates all objects in a scene and checks for resorting
+void Scene::update(float t){
+
+    for(uint32_t o: objects ){
+        // Clear update flags
+        VNAssets::objects[o].updated = false;
+    }
+
+    for(uint32_t o: objects ){
+
+        // Update the object
+        VNAssets::objects[o].update(t);
+
+    }
+}
+
+void Scene::draw(){
+    // Likely to be sorted
+
+    uint32_t shader = 0;
+    uint32_t model = 0;
+    bool bad_shader = false;
+
+    vec3 dim = {1, 1, 1};
+
+    glDisable(GL_DEPTH_TEST);
+    for(uint32_t o : objects){
+        ObjectInstance &obj = VNAssets::objects[o];
+
+        if(!obj.enabled || !obj.shader || !obj.model)
+            continue;
+
+        // Change the shader
+        if(obj.shader != shader){
+            shader = obj.shader;
+            ShaderContainer &sc = VNAssets::shaders[shader];
+            if( sc.needs_compiled ) {
+                sc.shader->load( sc.filename );
+                sc.needs_compiled = false;
+            }
+
+            // Skip drawing with this shader
+            bad_shader = !Shader::bind(*sc.shader);
+
+            if(bad_shader)
+                continue;
+
+            // Shader Settings
+            if(sc.blend){
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            }
+            else
+                glDisable(GL_BLEND);
+
+            if(sc.cull)
+                glEnable(GL_CULL_FACE);
+            else
+                glDisable(GL_CULL_FACE);
+
+            if(sc.depth_test)
+                glEnable(GL_DEPTH_TEST);
+            else
+                glDisable(GL_DEPTH_TEST);
+
+            // Load scene uniforms
+            Shader::uniformMat4f( UNIFORM_CAMERA, VNAssets::view.getInverseTransform() );
+            Shader::uniformMat4f( UNIFORM_PROJ, VNAssets::view.getPerspective() );
+            Shader::uniformVec3f( UNIFORM_CAM_POS, VNAssets::view.pos );
+        }
+
+        if(bad_shader)
+            continue;
+
+        // Change the model
+        if(obj.model != model){
+            model = obj.model;
+            ModelContainer &mc = VNAssets::models[model];
+
+            // Check model for updates, if so, load to VAO
+            if( mc.mesh.updated ) {
+                mc.mesh.to_VAO( mc.vao.get() );
+                mc.mesh.updated = false;
+            }
+
+            if( mc.image_changed ) {
+                if( !mc.image_names.empty() ){
+                    mc.image_array->load_file_list( mc.image_names, GL_LINEAR );
+                }
+                mc.image_changed = false;
+            }
+
+            if( mc.image_array->is_allocated() ) {
+                mc.image_array->bind( 0 );
+
+                if( mc.image_array->get_ratio() <= 1 ) {
+                    dim[1] = mc.image_array->get_ratio();
+                }
+                else {
+                    dim[0] = 1 / mc.image_array->get_ratio();
+                }
+            }
+            else{
+                dim[0] = 1;
+                dim[1] = 1;
+            }
+
+            // Bind the VAO
+            mc.vao->bind();
+        }
+
+        // Draw the object
+
+        // Load the armature if present
+        if( !obj.armature.empty() )
+            Shader::uniformMat4fArray( UNIFORM_JOINTS, ( ( mat4 * )obj.armature.transform_buffer.get() ), obj.armature.joints.size() );
+
+        // If there is not an armature present, do not load the full uniform, only load the root
+        else
+            Shader::uniformMat4f( UNIFORM_JOINTS, obj.transform );
+
+
+        Shader:: uniformVec3f(UNIFORM_TEXID, obj.tex_id);
+        Shader::uniformMat4f( UNIFORM_TRANSFORM, obj.transform );
+        dim[2] = obj.scale;
+        Shader::uniformVec3f( UNIFORM_FACTOR, dim );
+        glDrawElements( GL_TRIANGLES, VNAssets::models[model].vao->get_index_count(), GL_UNSIGNED_INT, 0 );
+
+    }
+}
+
+// Add an object and all children to the scene
+void Scene::add_object(uint32_t id){
+    std::queue<uint32_t> q;
+    q.push(id);
+    while(!q.empty()){
+        for(uint32_t c : VNAssets::objects[q.front()].children){
+            q.push(c);
+        }
+        objects.insert(q.front());
+        q.pop();
+    }
+}
+
+// Remove an object and all its children
+void Scene::remove_object(uint32_t id){
+    std::queue<uint32_t> q;
+    q.push(id);
+    while(!q.empty()){
+        for(uint32_t c : VNAssets::objects[q.front()].children){
+            q.push(c);
+        }
+        objects.erase(q.front());
+        q.pop();
+    }
+}
+
+
 void ObjectInstance::update( float t ) {
+
+    // Update parents
+    uint32_t p = parent;
+    while(p != 0){
+        if(VNAssets::objects[p].updated)
+            break;
+        VNAssets::objects[p].update(t);
+        p = VNAssets::objects[p].parent;
+    }
+
+    if(updated)
+        return;
+
+    updated = true;
+
     if(!enabled)
         return;
+
     key_position.update(position, t);
     key_rotation.update(rotation, t);
     key_scale.update(scale, t);
-}
+    key_texture_mix.update(tex_id[2], t);
 
-void ShaderContainer::draw() {
-    if( needs_compiled ) {
-        shader->load( filename );
-        needs_compiled = false;
+
+    glm_quat_mat4( rotation, transform );
+    glm_scale_uni( transform, scale);
+    glm_vec3_copy( position, transform[3] );
+
+
+    if(parent){
+        if(parent_joint){
+            glm_mat4_mul(VNAssets::objects[parent].armature.get_joint(parent_joint).tr, transform, transform);
+        }
+        else{
+            glm_mat4_mul(VNAssets::objects[parent].transform, transform, transform);
+        }
     }
 
-    if( !Shader::bind( *shader ) )
-        return;
-
-    Shader::uniformMat4f( UNIFORM_CAMERA, VNAssets::view.getCombinedTransform() );
-    Shader::uniformVec3f( UNIFORM_CAM_POS, VNAssets::view.pos );
-
-    for( uint32_t model_id : models ) {
-        VNAssets::models[model_id].draw();
-    }
-}
-
-void ModelContainer::draw() {
-    if( mesh.updated ) {
-        mesh.to_VAO( vao.get() );
-        mesh.updated = false;
-    }
-
-    mat4 tr;
-    vao->bind();
-    for( uint32_t object_id : objects ) {
-        ObjectInstance &o = VNAssets::objects[object_id];
-
-        if( !o.enabled )
-            continue;
-
-        glm_quat_mat4( o.rotation, tr );
-        glm_scale_uni( tr, o.scale );
-        glm_vec3_copy( o.position, tr[3] );
-        Shader::uniformMat4f( UNIFORM_TRANSFORM, tr );
-        glDrawElements( GL_TRIANGLES, vao->get_index_count(), GL_UNSIGNED_INT, 0 );
-    }
-}
-
-void ImageContainer::draw() {
-    if(needs_loaded){
-        image->load_png(filename, GL_LINEAR);
-        needs_loaded = false;
-    }
-    image->bind(0);
-
-
-    // Set the image ratio, the largest dimension is always size 1
-    vec3 dim = {1,1,1};
-    if(image->get_ratio() <= 1){
-        dim[1] = image->get_ratio();
-    }
-    else{
-        dim[0] = 1/image->get_ratio();
-    }
-
-    for( uint32_t object_id : objects ) {
-        ObjectInstance &o = VNAssets::objects[object_id];
-
-        if( !o.enabled )
-            continue;
-
-        Shader::uniformVec3f( UNIFORM_TRANSFORM, o.position );
-        dim[2] = o.scale;
-        Shader::uniformVec3f( UNIFORM_FACTOR, dim );
-        glDrawArrays( GL_QUADS, 0, 4 );
-    }
-}
-
-// NOTE Im leaving this in for now because it goes through the process of how to draw an armature
-
-/*
-void Character::draw() {
-    // Skip draw if not visible
-    if( !enabled )
-        return;
-
-    // Update the mesh if changed
-    if( mesh.updated ) {
-        mesh.to_VAO( vao.get() );
-        mesh.updated = false;
-    }
-
-    if(image_updated){
-        image->load_png(image_name, GL_LINEAR);
-        image_updated = false;
-    }
-
-    // Bind the image texture if present
-    image->bind(0);
-    vao->bind();
-
-    // Load the armature if present
+    // Copy transform to root joint, scale constraints accordingly
     if(!armature.empty()){
-        Shader::uniformMat4fArray(UNIFORM_JOINTS,armature.get_transform_buffer(), armature.getJoints().size() );
-    }
-    // If there is not an armature present, do not load the full uniform, only load the root
-    else{
-        mat4 tr;
-        glm_quat_mat4(object.rotation, tr);
-        glm_scale_uni(tr, object.scale);
-        glm_vec3_copy(object.position, tr[3]);
-        Shader::uniformMat4f(UNIFORM_TRANSFORM, tr);
-        Shader::uniformMat4f(UNIFORM_JOINTS, tr);
-    }
-
-    glDrawElements( GL_TRIANGLES, vao->get_index_count(), GL_UNSIGNED_INT, 0 );
-}
-
-void Character::update(float t) {
-    // Do not updated disabled characters
-    if(!enabled)
-        return;
-
-    // Update object animations
-    object.update(t);
-
-    if(!armature.empty()){
-        armature.set_root_transform(object.position, object.rotation, object.scale);
+        glm_mat4_scale(transform, armature.scale_constraint);
+        glm_mat4_copy(transform, armature.get_joint(0).tr);
         armature.update(t);
     }
 }
-*/
-
-
-
-
-

@@ -1,17 +1,27 @@
 # begin
 
 / Test expressions
-var a 0.0
+var a 0
 var b false
 var c 7.0
 
+
+var n #002aff7fNerum
+alias grt expr a (a+1)%4
+alias say_a say print &n &a
+/  alias grt alias grt
+
 # again
-var b false
-var a 0.0
 
-expr a rand(0,1)
-expr b a>.5
+$grt
+$say_a
+$grt
+$say_a
 
-print a: &a b: &b
-wait
-jump again
+say start
+#ff0000ffThe quick #00ff00ffbrown fox jumped over #0000ff7fthe lazy \#\ndog.
+
+say start
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec consequat ipsum in eleifend maximus. In eu arcu ac dolor rutrum pulvinar sit amet consequat urna. Duis vel orci id urna consectetur elementum. Vestibulum semper mauris sed orci dignissim, et ultricies sem venenatis. Integer tincidunt elementum condimentum. Mauris vel elementum sapien, vel bibendum est. Nulla ullamcorper sollicitudin eleifend. Etiam tempus lacus velit, nec aliquet nunc condimentum sed. Etiam sem nibh, finibus at nibh et, commodo fringilla elit. Quisque sollicitudin tellus at consectetur efficitur. Vestibulum vehicula magna vitae consequat iaculis. Sed magna augue, varius tincidunt eleifend eget, tempus vitae nibh. Sed sed tincidunt massa. Pellentesque bibendum mi felis, ac pretium lorem sodales vitae. Nulla sed eleifend elit. Proin eros metus, aliquet vitae libero vel, imperdiet varius augue.
+
+return

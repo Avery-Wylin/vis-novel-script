@@ -41,11 +41,11 @@ bool VNOperation::construct( const std::vector<std::string> &tokens, uint8_t off
             tokens[offset] == "model" ||
             tokens[offset] == "object" ||
             tokens[offset] == "armature" ||
-            tokens[offset] == "image" ||
             tokens[offset] == "say" ||
             tokens[offset] == "character" ||
             tokens[offset] == "quat" ||
-            tokens[offset] == "str"
+            tokens[offset] == "str" ||
+            tokens[offset] == "scene"
         )
     ) {
         op_name = tokens[offset];

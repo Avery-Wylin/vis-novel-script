@@ -1,6 +1,6 @@
 #include "ExpressionParser.h"
 
-std::regex operand_inline = std::regex(R"((^\-?(?:[0-9]+)?(?:\.?[0-9]+))(.*$))");
+std::regex operand_inline = std::regex(R"((^(?:[0-9]+)?(?:\.?[0-9]+))(.*$))");
 std::regex operand_ref = std::regex(R"((^[a-zA-Z]+[a-zA-Z0-9_]*)(.*$))");
 std::regex whitespace = std::regex(R"((\s+)(.*$))");
 

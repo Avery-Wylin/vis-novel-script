@@ -1,102 +1,91 @@
-var a { 0 }
-var b { 0 }
-var c { 0 }
-var x 1
-var y 2
-var z 3
-var w 4
+// Init assets
+view set position { 0 0 2 }
+// Create a menu to show gui elements
+menu create menu_text
+menu activate menu_text
 
-jump begin test2
+scene create main_scene
+scene select main_scene
 
-jump end-routines
-
-# bar-pitch
-    var pitch 1.0
-    element value bar-pitch get &pitch
-    print &pitch
-    music pitch &pitch
-exit
-
-# end-routines
-
-menu create menu-main
-menu activate menu-main
-
-/  element create bar bar-pitch
-/  element size bar-pitch set .3 .1
-/  element routine bar-pitch bar-pitch main
-
-element create text name
-element size name set .2 .05
-
+// Create the text box
 element create text text
-element size text set .8 .2
+element size text set 1 .3
+element position text set .25 .02
+say element text text
 
-element create text-input input
-element size input set .8 .05
-element enable input false
+// Create the name title box
+element create text name
+element size name set .15 .05
+element position name set .25 .33
+say element name name
 
-menu compact center 0 .5 .1 .4 .02 .02
+// Create names
+var a Ahura
+var u Nerum
 
-/ this is gross...
-var x .0
-var y .0
-element position name get &x &y
-sub &x .2 &x
-element position name set &x &y
+// Create shader
+shader create char_shader
+shader load char_shader debug
+shader setting char_shader cull true
+shader setting char_shader blend false
+shader setting char_shader depth true
 
-/  music play patient-tinge
+shader create img_shader
+shader load img_shader image
+shader setting img_shader cull false
+shader setting img_shader blend true
+shader setting img_shader depth false
 
-var emptystr _
-str clear &emptystr
-var playername &emptystr
-var choice &emptystr
+// Create a mesh for Ahura
+model create &a
+/  model load &a Ahura
+model images &a ahura ahura2 ahura3
+
+// Create an object for Ahura
+object create &a
+object model &a &a
+object shader &a img_shader
+object scale &a 3
+object translate &a { 0 .5 0 }
+
+var t tiny_ahura
+object create &t
+object model &t &a
+object shader &t img_shader
+object scale &t 2
+object parent &t &a
+object translate &t { .5 0 0 }
+
+var t tiny_ahura2
+object create &t
+object model &t &a
+object shader &t img_shader
+object scale &t 1
+object parent &t &a
+object translate &t { .75 0 0 }
+
+scene add &a
+
+// Load an armature for Ahura
+/  armature load &a
+/  armature create &a &a
 
 # again
-say start Jovian
-Whats your favorite fruit?
 
-element text input set &emptystr
-element enable input true
-wait
-element enable input false
-element value input get &choice
+object imgsel &a ahura2 .5
+object animate position &a { 0 .5 0 } .5
+@a To blue
 
-if &choice b
-# bb_or_bn
-say start Jovian
-blueberry or banana?
+/  object set position &a { 0 .5 0 }
+object imgsel &a ahura3 .5
+object animate position &a { 0 0 0 } .5
+@a To flipped
 
-element text input set &emptystr
-element enable input true
-wait
-element enable input false
-element value input get &choice
+object imgsel &a ahura .5
+@a To normal
 
-if &choice a
-say start Jovian
-banana
+// Test saying something
+/  armature play &a Move 3 back
 
-elseif &choice b
-say start Jovian
-blueberry
-
-else
-    jump bb_or_bn
-end
-
-elseif &choice s
-say start Jovian
-strawberry
-
-elseif &choice k
-say start Jovian
-kiwi
-
-else
-say start Jovian
-orange
-
-end
 
 jump again

@@ -83,6 +83,7 @@ class ElementSet {
                 return false;
             }
         }
+        inline Element* get_selection(){return selection;}
 };
 
 #endif // ELEMENTSET_H
